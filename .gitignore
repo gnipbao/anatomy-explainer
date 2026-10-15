@@ -1,0 +1,20 @@
+# Local credentials and machine state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Generated projects and dependencies
+.dao/
+outputs/
+runs/
+node_modules/
+.venv/
+venv/
+*.log
+*.tmp
+*.part

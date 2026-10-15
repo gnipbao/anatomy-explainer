@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "anatomy-official-dark",
+  "base": "dark",
+  "tokens": {
+    "--anatomy-mid": "#96969B",
+    "--anatomy-lo": "#626269",
+    "--anatomy-faint": "#3E3E45",
+    "--anatomy-text": "#BEBEC4"
+  }
+}

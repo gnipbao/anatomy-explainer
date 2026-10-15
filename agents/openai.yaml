@@ -1,0 +1,4 @@
+interface:
+  display_name: "Anatomy 科普视频"
+  short_description: "等轴测机制科普视频、实测短句配音与动态字幕"
+  default_prompt: "使用 $anatomy-explainer，把给定主题做成科普视频。结合 grill-me 先锁定制作简报；默认中文、官方浅色主题、豆包 TTS，新项目用 phrases 模式实测每条短句。横屏用左知识栏和右机制舞台，机制部件按绝对时间运动并支持随机 seek。可选官方 dark base 加视频对比度增强的黑色主题；双主题需分别构建和导出。"

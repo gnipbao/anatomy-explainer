@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "mode": "offline-video",
+  "topic_id": "token-bucket",
+  "topic": "令牌桶为什么既能限速又允许短时突发",
+  "language": "zh-CN",
+  "sources": [
+    {
+      "id": "rfc3290",
+      "title": "RFC 3290 Appendix A.2: Token Buckets",
+      "url": "https://www.rfc-editor.org/rfc/rfc3290#appendix-A.2",
+      "scope": "速率与突发容量的概念依据；按请求计费、拒绝无排队是本例的明确教学简化。"
+    }
+  ],
+  "concept_model": {
+    "kind": "request-token-bucket",
+    "refill_per_second": 1,
+    "capacity": 4,
+    "cost_per_request": 1,
+    "initial_tokens": 4,
+    "insufficient_tokens": "reject",
+    "queue": false,
+    "allow_debt": false,
+    "assumptions": [
+      "同批请求视为同一时刻到达，处理期间不补充令牌。",
+      "每个请求消耗相同数量的令牌；实际系统可能使用字节等其他计费单位。",
+      "补充后的令牌数最多为容量，超过容量的补充不累积。"
+    ],
+    "events": [
+      {
+        "time_seconds": 0,
+        "incoming_requests": 6,
+        "tokens_before": 4,
+        "accepted": 4,
+        "rejected": 2,
+        "tokens_after": 0
+      },
+      {
+        "time_seconds": 2,
+        "incoming_requests": 3,
+        "tokens_before": 2,
+        "accepted": 2,
+        "rejected": 1,
+        "tokens_after": 0
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "predict-burst",
+      "scene_id": "predict",
+      "concept": "预存令牌允许有限突发",
+      "question": "桶里已有4枚令牌，每个请求耗1枚。6个请求同时到达，期间不补充，能通过几个？",
+      "expected_answer": "通过4个，拒绝2个，余下0枚令牌。",
+      "explanation": "这一瞬间只能使用已有的4枚令牌。每通过1个就取走1枚，剩下2个没有令牌，按本例规则拒绝。",
+      "hints": [
+        "先忽略下一秒，只看请求到达这一刻桶里有多少枚。",
+        "每个通过的请求都要拿走1枚令牌。"
+      ],
+      "misconceptions": [
+        "每秒补1枚不等于任何瞬间都只能通过1个请求。",
+        "6个同时请求的批次中没有额外经过1秒，不能偷加1枚。"
+      ],
+      "source_ids": [
+        "rfc3290"
+      ]
+    },
+    {
+      "id": "explain-rate-and-capacity",
+      "scene_id": "mechanism",
+      "concept": "补充速率和桶容量控制不同的行为",
+      "question": "每秒补1枚、最多存4枚，为什么有时能瞬间通过4个，却不能一直每秒通过4个？",
+      "expected_answer": "存下来的令牌支撑短时突发；用完之后，持续供给只有每秒1枚。",
+      "explanation": "容量决定最多能攒多少，补充速率决定之后能恢复多快。初始余额带来的突发额度会消耗掉，桶满后继续等待也不会积累超过4枚。",
+      "hints": [
+        "把已有的存量与每秒新增的数量分开。",
+        "想一想桶已空时，下一秒最多多出几枚。"
+      ],
+      "misconceptions": [
+        "桶容量4不是每秒通过4个请求的持续额度。",
+        "桶已满后继续等待，令牌不会无限增加。",
+        "本例拒绝令牌不足的请求，不能画成它们自动进入队列。"
+      ],
+      "source_ids": [
+        "rfc3290"
+      ]
+    },
+    {
+      "id": "transfer-after-two-seconds",
+      "scene_id": "transfer",
+      "concept": "用补充规则预测新的到达批次",
+      "question": "刚才的6个请求处理完后桶已空。空闲整整2秒，再同时来3个请求，结果如何？",
+      "expected_answer": "补回2枚；通过2个，拒绝1个，处理后余下0枚。",
+      "explanation": "两秒补充2枚。三个请求合计需要3枚，所以只有两个能获得令牌；另一个按本例准入规则拒绝。",
+      "hints": [
+        "起点是0枚，不是初始的4枚。",
+        "2秒乘以每秒1枚，得到本次可用的补充量。"
+      ],
+      "misconceptions": [
+        "经过2秒只补2枚，不会自动整桶重置为4枚。",
+        "不能把上一次拒绝的2个请求算作当前队列。"
+      ],
+      "source_ids": [
+        "rfc3290"
+      ]
+    }
+  ],
+  "purpose": "可选预测与迁移题；独立教育数据，不是 grill-me 接口。",
+  "assessment_policy": {
+    "offline_grading": false,
+    "write_learning_ledger": false,
+    "note": "预录视频的教育材料没有真实观众回答，不生成个人成绩、置信度或自适应记录。"
+  }
+}

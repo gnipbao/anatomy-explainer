@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "example_only": true,
+  "status": "illustrative_not_user_confirmed",
+  "topic": "令牌桶：为什么限流器允许短时突发？",
+  "audience": "没有编程背景的成年观众",
+  "core_question": "每秒补一个令牌，为什么还能同时放行四个请求？",
+  "duration_seconds": 45,
+  "language": "zh-CN",
+  "theme": "anatomy-official-light",
+  "tts": {"provider": "doubao"},
+  "decision_provenance": [
+    {"field": "audience", "kind": "example_assumption", "basis": "样片采用的演示受众，未发生真实访谈确认。"},
+    {"field": "core_question", "kind": "example_assumption", "basis": "围绕容量与补充速率的区别组织示例，不代表用户确认的内容重点。"},
+    {"field": "duration_seconds", "kind": "example_assumption", "basis": "45秒是示例目标值；成片时长需按实际语音测量，未获真人确认。"},
+    {"field": "language", "kind": "agent_default", "basis": "中文示例采用默认语言；真实任务需继承用户已明确的语言条件。"},
+    {"field": "theme", "kind": "agent_default", "basis": "用户原请求固定使用官方视觉体系，具体选择官方浅色是该约束内的默认值。", "constraint_provenance": "user_request"},
+    {"field": "tts.provider", "kind": "user_request", "basis": "用户原请求要求接入豆包语音 TTS。"}
+  ],
+  "open_questions": [
+    {"id": "audience-and-goal", "prerequisites": [], "question": "当前示例受众与核心理解目标是否适合真实视频？", "recommendation": "面向普通成年观众，聚焦容量与补充速率的区别。", "state": "example_unanswered"},
+    {"id": "duration-and-scope", "prerequisites": ["audience-and-goal"], "question": "在确认受众与目标后，是否采用约45秒、仅解释一个机制的范围？", "recommendation": "先做单机制短片；不加入多种限流器对比。", "state": "example_unanswered"}
+  ],
+  "shared_understanding_confirmed": false,
+  "note": "此文件仅演示记录格式。没有真实用户回答或共同理解确认，不能作为锁定简报或正式制作授权。"
+}

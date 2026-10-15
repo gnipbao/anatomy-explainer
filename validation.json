@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-10-15",
+  "evidence_level": "E3-executed-tested-environment",
+  "upstream_integrity_files": 38,
+  "python_tests_passed": 46,
+  "node_tests_passed": 21,
+  "skill_quality_check": "passed",
+  "install_dry_run_and_temporary_copy": "passed",
+  "sample": {
+    "provider": "say",
+    "language": "zh-CN",
+    "audio_duration": 33.651479,
+    "video_duration": 33.666667,
+    "width": 1280,
+    "height": 720,
+    "fps": 24,
+    "frames": 808,
+    "video_codec": "h264",
+    "audio_codec": "aac"
+  },
+  "english_audio": {
+    "provider": "say",
+    "language": "en-US",
+    "duration": 4.588313
+  },
+  "cloud_doubao_live_test": true,
+  "global_install": false,
+  "unverified": [
+    "full upstream geometry audit",
+    "complete human listening review",
+    "audience learning outcomes",
+    "cross-topic success rate"
+  ],
+  "cloud_doubao_evidence": {
+    "checked_on": "2026-10-15",
+    "topic": "木牛流马",
+    "scenes": 8,
+    "duration": 64.596,
+    "resource_id": "seed-tts-2.0",
+    "voice": "zh_female_vv_uranus_bigtts",
+    "credentials_in_package": false,
+    "segment_mode": "phrases",
+    "measured_phrase_cues": 17
+  },
+  "actual_topic_test": {
+    "topic": "木牛流马",
+    "provider": "doubao",
+    "scenes": 8,
+    "duration": 64.625,
+    "resolution": "1920x1080",
+    "fps": 24,
+    "frames": 1551,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "scene_captures_reviewed": 8,
+    "historical_copy_independent_review": "passed",
+    "full_grill_interview": "not performed; bounded production test",
+    "upstream_geometry_audit": "not run",
+    "measured_phrase_cues": 17,
+    "themes": [
+      "anatomy-official-light",
+      "anatomy-official-dark"
+    ],
+    "theme_renders_completed": true,
+    "caption_safe_areas_passed": true,
+    "caption_placements": [
+      "left",
+      "bottom",
+      "bottom-left",
+      "right"
+    ],
+    "mechanism_motion": [
+      "progressive assembly",
+      "timed disassembly/reassembly",
+      "world-axis wheel reprojection",
+      "route progression"
+    ],
+    "independent_visual_review": "nonblind second-agent review; conditional pass, contrast issue fixed",
+    "complete_human_listening_review": false
+  },
+  "version": "0.2.1",
+  "preserved_baseline": {
+    "version": "0.1.0",
+    "offline_tests": 30,
+    "actual_topic_test": {
+      "topic": "木牛流马",
+      "video_duration": 62.541667,
+      "frames": 1501,
+      "fps": 24
+    }
+  },
+  "theme_note": "Light uses unchanged official palette; dark uses official base with video line/text contrast overrides. Vendored upstream files remain unchanged.",
+  "publication_at_video_validation_time": false,
+  "publication_status": "See GitHub repository metadata and commit history for current publication status.",
+  "public_release_checks": {
+    "version": "0.2.1",
+    "offline_tests_passed": 67,
+    "installer_git_and_environment_exclusion_regression": "passed",
+    "upstream_hashes": 38,
+    "private_paths_or_uuid_like_values": 0,
+    "media_or_credentials_in_repository": false
+  }
+}

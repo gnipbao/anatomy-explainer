@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "science-blue",
+  "base": "light",
+  "tokens": {
+    "--anatomy-blue": "#2563eb"
+  }
+}

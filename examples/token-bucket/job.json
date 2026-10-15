@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "topic": "令牌桶：为什么限流器允许短时突发？",
+  "language": "zh-CN",
+  "theme": "anatomy-official-light",
+  "topic_pack": "general-science",
+  "audience": "没有编程背景的成年观众",
+  "content_ready": true,
+  "video": {
+    "width": 1280,
+    "height": 720,
+    "fps": 24
+  },
+  "tts": {
+    "provider": "doubao",
+    "segment_mode": "phrases"
+  },
+  "sources": [
+    {
+      "id": "rfc3290",
+      "title": "RFC 3290 · Appendix A.2 · Token Buckets",
+      "url": "https://www.rfc-editor.org/rfc/rfc3290#appendix-A.2",
+      "supports": "令牌桶速率与突发容量；本片把流量单位简化为每请求一个令牌"
+    }
+  ],
+  "model": {
+    "capacity": 4,
+    "refill_per_second": 1,
+    "initial_tokens": 4,
+    "request_cost": 1
+  },
+  "scenes": [
+    {
+      "id": "predict",
+      "title": "每秒补一个，能同时放行四个吗？",
+      "narration": "每秒补一个令牌，不等于每秒只能通过一个请求。桶里已经存满四个，同时来六个请求，会通过几个？",
+      "caption": "先猜：六个同时到达，能通过几个？",
+      "hold_seconds": 2,
+      "source_ids": [
+        "rfc3290"
+      ],
+      "hint": "先预测 · 停顿两秒"
+    },
+    {
+      "id": "mechanism",
+      "title": "存量决定突发，补充决定长期速率",
+      "narration": "答案是四个。每个请求拿走一个令牌，四个用完，另外两个被拒绝。空桶每秒补一个，但最多存四个。",
+      "caption": "容量 B = 4 · 补充 R = 1 / 秒 · 每次消耗 1",
+      "hold_seconds": 0,
+      "source_ids": [
+        "rfc3290"
+      ],
+      "hint": "请求计数示例 · 无令牌时拒绝"
+    },
+    {
+      "id": "transfer",
+      "title": "换个条件，再推一次",
+      "narration": "如果空桶等两秒，再同时来三个请求呢？可以通过两个。记住，容量控制突发额度，补充速率限制长期平均。",
+      "caption": "空桶等 2 秒 → 2 个令牌 → 通过 2 / 拒绝 1",
+      "hold_seconds": 0,
+      "source_ids": [
+        "rfc3290"
+      ]
+    }
+  ],
+  "presentation": {
+    "captions": {
+      "mode": "phrase",
+      "placement": "auto"
+    }
+  }
+}
