@@ -2,7 +2,7 @@
 
 `anatomy-voice-engine` 是与 Skill 分开运行的本机 HTTP 服务。当前后端为 `voxcpm2_mlx`：Apple Silicon Mac、原生 arm64 Python 3.12、`mlx-audio==0.5.9`、`mlx==0.31.1`、`soundfile==0.13.1`，使用社区转换的 VoxCPM2 8-bit 权重。Windows、NVIDIA 和其他模型后端尚未实现。基础视频流程仍使用原来的 Python 环境；MLX 依赖只装入独立虚拟环境。
 
-豆包仍是新项目默认值。服务启动且模型就绪后，只把已有 `job.json` 的 `tts.provider` 改为 `"local"`，继续使用相同的 TTS、字幕、构建与渲染命令。原有 `tts.voice`、`tts.resource_id` 可保留，切回 `"doubao"` 时继续使用；本地音色另用 `tts.local_voice`，默认 `"default"`。
+新项目配音优先用户指令和本机偏好，未配置时使用豆包。服务启动且模型就绪后，只把已有 `job.json` 的 `tts.provider` 改为 `"local"`，继续使用相同的 TTS、字幕、构建与渲染命令。原有 `tts.voice`、`tts.resource_id` 可保留，切回 `"doubao"` 时继续使用；本地音色另用 `tts.local_voice`，默认 `"default"`。
 
 ## 准备环境与模型
 
@@ -94,6 +94,28 @@ python3 "$HOME/.local/share/anatomy-voice-engine/app/voice_engine.py" synthesize
 ## 音色与生成参数
 
 编辑私有配置的 `voice` 设置默认音色，或在 `voices` 注册其他 ID；job 的 `tts.local_voice` 只引用 ID，HTTP 请求不能传入任意文件路径或改变后端参数。
+
+已试听并确认使用某个参考音色后，将它放在独立的私有目录，例如 `~/.local/share/anatomy-voice-engine/voices/default/reference.wav`，并在 `~/.config/anatomy-voice-engine/config.json` 中更新以下 `voice` 片段，保留其他现有配置：
+
+```json
+{
+  "voice": {
+    "id": "default",
+    "language": "zh-CN",
+    "reference_audio": "~/.local/share/anatomy-voice-engine/voices/default/reference.wav"
+  }
+}
+```
+
+这里只示意用户自行准备的本人或已获授权音频，不提供或分发公共参考音色。`voice.id` 使用 `default`，这样未填写 `local_voice` 的请求也会采用该音色。修改引擎配置后重启服务，并试听验证。
+
+要让后续新项目自动选用它，再创建独立的 `~/.config/anatomy-explainer/preferences.json`：
+
+```json
+{"schema_version": 1, "tts": {"provider": "local", "local_voice": "default", "segment_mode": "phrases"}}
+```
+
+偏好只保存服务、音色 ID 和分段模式；参考路径与生成参数仍留在引擎私有配置中。`project.py init` 对新主题及示例应用偏好，已有 job 不改写；`--tts-provider doubao` 可覆盖服务，`--ignore-preferences` 忽略偏好，或以互斥的 `--preferences-file FILE` 选择其他偏好文件。公开配置模板仍提供通用音色描述，安装或更新不会替所有用户配置同一参考音色。
 
 | 字段 | 含义 |
 | --- | --- |

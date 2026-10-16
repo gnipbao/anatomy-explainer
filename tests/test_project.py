@@ -29,7 +29,7 @@ class ProjectContract(unittest.TestCase):
     def test_new_project_defaults_to_measured_phrase_synthesis(self):
         with tempfile.TemporaryDirectory() as d:
             target=Path(d)/'new'
-            p.init(SimpleNamespace(project=str(target),example=None,topic='木牛流马',language='zh-CN',theme='anatomy-official-light'))
+            p.init(SimpleNamespace(project=str(target),example=None,topic='木牛流马',language='zh-CN',theme='anatomy-official-light',ignore_preferences=True))
             job=p.read(target/'job.json')
             self.assertEqual(job['tts']['segment_mode'],'phrases')
             self.assertEqual(job['presentation']['captions']['mode'],'phrase')

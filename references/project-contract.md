@@ -10,7 +10,7 @@
 - `theme` 默认 `anatomy-official-light`，可选内置黑色 `anatomy-official-dark`；`topic_pack` 默认 `general-science`。一次构建使用一个主题，两套交付需分别构建和渲染。
 - `content_ready: true` 表示代理完成研究、脚本和模型；初始化草稿为 false。
 - `video: {width,height,fps}`：偶数尺寸 240–3840、整数帧率 1–60；新主题初始化为 1920×1080/30fps，令牌桶示例为 1280×720/24fps。木牛流马双主题验证采用 1920×1080/24fps，不改变初始化默认值。
-- `tts: {provider,segment_mode?,voice?,resource_id?,local_voice?,endpoint?,timeout_seconds?}`；provider 为 doubao/local/say/external，默认 doubao。`local_voice` 是本地注册音色 ID（默认 default），与豆包的 `voice` 分开；`endpoint` 默认 `http://127.0.0.1:3931/v1/audio/speech`，只接受 loopback HTTP 固定路径；本地请求 `timeout_seconds` 默认 600，允许 30–3600。新项目与示例默认 `segment_mode: "phrases"`，逐短句合成和测长；旧 job 省略此字段仍走场景音频兼容路径。
+- `tts: {provider,segment_mode?,voice?,resource_id?,local_voice?,endpoint?,timeout_seconds?}`；provider 为 doubao/local/say/external。新项目优先显式选择与本机偏好，未配置时为 doubao。`local_voice` 是本地注册音色 ID（默认 default），与豆包的 `voice` 分开；`endpoint` 默认 `http://127.0.0.1:3931/v1/audio/speech`，只接受 loopback HTTP 固定路径；本地请求 `timeout_seconds` 默认 600，允许 30–3600。新项目与示例在没有偏好覆盖时为 `segment_mode: "phrases"`，逐短句合成和测长；旧 job 省略此字段仍走场景音频兼容路径。
 - `sources: [{id,title,url,supports?}]`；本地资料可用 `local:` 引用并在运行项目保留副本。
 - `scenes: [{id,title,narration,caption,source_ids,hold_seconds?,hint?,presentation?}]`。id 唯一小写安全标识，不作为任意路径使用。`narration` 是讲稿，`caption` 是知识栏要点，二者不必重复。`hold_seconds` 为 0–30 秒，长稿应按概念拆场景。
 - `presentation: {captions?,reduced_motion?,zoom?,focus?}`：新项目默认 `captions: {mode:"phrase",style:"cinema",placement:"bottom"}`。`mode` 可选 phrase/scene；`style` 可选 cinema/kinetic，省略仍为 cinema。`placement` 可选 auto/bottom/left/right/top，但只控制显式 kinetic 风格；cinema 始终全画幅底部居中。`keep_together` 可选，由最多 64 个非空短语组成，保护术语不被拆行；每项不超过 100 字符且不能含控制字符。`zoom` 为 1–1.12，`focus` 为两个 0–1 数值组成的 `[x,y]`。
@@ -19,6 +19,12 @@
 场景可用 `scene.presentation: {caption_placement?,zoom?,focus?}` 覆盖镜头；`caption_placement` 仅用于显式 kinetic 风格。kinetic 下显式全局位置优先于场景位置，auto 才按场景和 cue 选择安全区，输出可能包含内部布局名 bottom-left。cinema 忽略这些换位选项；旧 job 即使写了 placement:auto，也不会让默认影院字幕移动。显式 `mode:"scene"` 保留整场 narration 和旧表现的兼容路径，不把整段讲稿挤进影院两行。
 
 运行 `project.py check` 验证字段、来源引用和现有时轴。TTS 配置还由 `tts.py` 独立验证；机械检查无法证明科学事实正确。
+
+## 初始化配音偏好
+
+`project.py init` 对新主题及 `--example` 都读取可选文件 `~/.config/anatomy-explainer/preferences.json`，合约为 `{"schema_version":1,"tts":{"provider":"local","local_voice":"default","segment_mode":"phrases"}}`。`tts` 只允许这三个非敏感字段；不接受凭据、模型路径、参考音频路径或任意其他 job 字段。默认偏好文件缺失时保持公开模板，显式指定文件缺失或任一偏好文件无效时，初始化在创建目录前失败。
+
+优先级为公开模板 < 本机偏好 < `--tts-provider`；用户本轮指令应通过显式选项或审查后的 job 落实。可用互斥的 `--preferences-file FILE` 指定另一份文件，或 `--ignore-preferences` 跳过偏好。读取只发生在初始化，`check`、`build` 和 `tts.py` 不重读偏好，也不重写已有 job。最终 provider 为 `external` 时，初始化固定采用 `scene` 分段；没有分段偏好时，其他服务保留模板的 `phrases`。
 
 ## 知识栏、字幕与主题
 

@@ -10,7 +10,17 @@ python3 scripts/tts.py --project /path/to/project --force
 
 `--dry-run` 只验证结构并输出公开配置、字符数和拟合成短句，不读取凭据、不访问网络、不调用合成、不创建音频、不估算时长。它不证明账户、音色、语言或外部音频可用。已有音频输出时默认拒绝覆盖；`--force` 替换整套 `audio/`、完整旁白、字幕和时间轴，不能把私人文件存进生成用的 `audio/`。
 
-## 默认：豆包 Seed TTS 2.0
+## 本机默认与单次覆盖
+
+`project.py init`（含 `--example`）先使用公开模板，再应用可选的 `~/.config/anatomy-explainer/preferences.json`，最后由 `--tts-provider` 覆盖服务。没有偏好文件时保留豆包短句模式；偏好文件只允许 `schema_version: 1` 与 `tts` 中的 `provider`、`local_voice`、`segment_mode`，不存凭据、接口地址或参考音频路径。格式有误时应修复偏好，不静默忽略。
+
+```json
+{"schema_version": 1, "tts": {"provider": "local", "local_voice": "default", "segment_mode": "phrases"}}
+```
+
+`init --preferences-file FILE` 指定另一份偏好，`--ignore-preferences` 跳过读取，两者互斥。显式指定的文件必须存在；默认文件缺失才回落到公开模板。最终服务为 `external` 时，初始化固定采用 `segment_mode: "scene"`。本机偏好只参与初始化；已有 job 的检查、合成和构建仍使用 job 中的配置，不自动迁移。用户本轮明确选择优先；参考音色由本地引擎的私有配置管理，见 [本地配音引擎](local-voice-engine.md)。
+
+## 豆包 Seed TTS 2.0（未配置偏好时）
 
 ```json
 {

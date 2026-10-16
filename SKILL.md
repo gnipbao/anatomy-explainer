@@ -1,11 +1,11 @@
 ---
 name: anatomy-explainer
-description: 从一个主题制作有事实来源、Anatomy 官方等轴测机械插画、逐场景旁白、多语言 TTS、电影式短句字幕和 MP4 的科普视频。Use when the user asks for 科普视频、原理解说、机制动画、anatomy 视频，或想把主题转成可讲清因果的短片。默认中文、官方浅色主题、豆包语音，可切换独立 VoxCPM2 本地引擎；结合 grill-me 分轮审题，可扩展视觉与内容主题插件。
+description: 从一个主题制作有事实来源、Anatomy 官方等轴测机械插画、逐场景旁白、多语言 TTS、电影式短句字幕和 MP4 的科普视频。Use when the user asks for 科普视频、原理解说、机制动画、anatomy 视频，或想把主题转成可讲清因果的短片。默认中文、官方浅色主题；配音优先用户指令和本机偏好，未配置时用豆包，可切换独立 VoxCPM2 本地引擎；结合 grill-me 分轮审题，可扩展视觉与内容主题插件。
 ---
 
 # Anatomy 科普视频解说
 
-给一个主题，交付可解释因果、可复述原理的视频。讲稿、画面与读数使用同一事实模型；默认中文、60–90 秒、16:9、官方浅色、豆包短句 TTS。内置两套成片主题：默认浅色与黑色；同一机制和字幕时轴可直接切换。用户明确提供的语言、时长和比例优先。
+给一个主题，交付可解释因果、可复述原理的视频。讲稿、画面与读数使用同一事实模型；默认中文、60–90 秒、16:9、官方浅色。配音优先用户本轮指令，其次采用已配置的本机偏好；未配置时用豆包短句 TTS。内置两套成片主题：默认浅色与黑色；同一机制和字幕时轴可直接切换。用户明确提供的语言、时长和比例优先。
 
 ## Resource Guide
 
@@ -35,7 +35,7 @@ description: 从一个主题制作有事实来源、Anatomy 官方等轴测机�
 python3 "$SKILL_ROOT/scripts/project.py" init --project "$RUN_DIR" --topic "用户主题"
 ```
 
-默认新项目是草稿，必须写入事实、场景和机制后才允许构建。`--example token-bucket` 仅用于演示和排障；不能换标题充当新主题成片。
+默认新项目是草稿，必须写入事实、场景和机制后才允许构建。初始化读取 `~/.config/anatomy-explainer/preferences.json` 的可选配音偏好；用户明确指定服务时传入 `--tts-provider`，可用 `--preferences-file FILE` 指定偏好或 `--ignore-preferences` 忽略偏好。偏好只影响新建项目，不重写旧 job；不要绕过偏好把配音强行改回豆包。`--example token-bucket` 仅用于演示和排障；不能换标题充当新主题成片。
 
 ### 2. 先核对知识，再设计解释
 
@@ -67,9 +67,9 @@ python3 "$SKILL_ROOT/scripts/tts.py" --project "$RUN_DIR" --dry-run
 python3 "$SKILL_ROOT/scripts/tts.py" --project "$RUN_DIR"
 ```
 
-新项目默认 `tts.segment_mode: "phrases"`，逐短句真实合成并测长。字幕切换来自 `timing.captions.cues`，不是按字数假装精确对齐；外部完整录音用 scene 模式或经审看的 manual cues。
+新项目在没有偏好覆盖时使用 `tts.segment_mode: "phrases"`，逐短句真实合成并测长。字幕切换来自 `timing.captions.cues`，不是按字数假装精确对齐；外部完整录音用 scene 模式或经审看的 manual cues。
 
-默认豆包；缺凭据时继续完成研究、讲稿、分镜和机制，明确报 `audio_pending`，不要产出静音冒充旁白。用户可选 `local` 独立配音引擎、`say` 系统语音或 `external` 导入其他服务配音；切换服务须告知，不能静默降级。非中文豆包须显式选择已核对语种能力的音色；本地 say 从已安装音色中匹配目标语言，可显式指定；不支持的语言交给 external。详见 `references/tts.md`。不读取、打印或打包凭据值。
+以已初始化并审查的 job 为本次配音配置；本机偏好可将 `local` 和 `local_voice: "default"` 设为后续项目默认，未配置才回落到豆包。豆包缺凭据或本地服务未就绪时，继续完成研究、讲稿、分镜和机制，明确报 `audio_pending`，不要产出静音冒充旁白。用户可选 `local` 独立配音引擎、`say` 系统语音或 `external` 导入其他服务配音；切换服务须告知，不能静默降级。非中文豆包须显式选择已核对语种能力的音色；本地 say 从已安装音色中匹配目标语言，可显式指定；不支持的语言交给 external。详见 `references/tts.md`。不读取、打印或打包凭据值。
 
 用户选择 `local` 时，先读取 `references/local-voice-engine.md`，检查 Apple Silicon、独立 MLX 环境、模型校验和本机服务健康状态。`tts.provider` 改为 local 即可保留既有豆包 `voice/resource_id`；本地使用独立 `local_voice`（默认 default），接口默认 `127.0.0.1:3931/v1/audio/speech`。模型缺失仍为 `audio_pending`，给出固定权重下载地址和目录；不自动下载主权重，不因安装依赖或 doctor 通过就宣称真实合成成功。独立整篇合成没有字幕时间戳，必须标记 `alignment_pending`；完成试听和真实对齐前不宣称已完成精确字幕成片。
 

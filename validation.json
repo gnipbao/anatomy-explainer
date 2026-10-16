@@ -3,7 +3,7 @@
   "checked_on": "2026-10-16",
   "evidence_level": "E3-executed-tested-environment",
   "upstream_integrity_files": 38,
-  "python_tests_passed": 113,
+  "python_tests_passed": 127,
   "node_tests_passed": 54,
   "skill_quality_check": "passed",
   "install_dry_run_and_temporary_copy": "passed",
@@ -31,7 +31,6 @@
     "complete human listening review",
     "audience learning outcomes",
     "cross-topic success rate",
-    "VoxCPM2 weight loading and actual synthesis",
     "VoxCPM2 narration completeness and listening quality",
     "VoxCPM2 multilingual pronunciation, runtime memory and speed"
   ],
@@ -84,7 +83,7 @@
     "srt_matches_render_track": true,
     "independent_frame_comparison_per_theme": 1551
   },
-  "version": "0.4.0",
+  "version": "0.4.1",
   "preserved_baseline": {
     "version": "0.1.0",
     "offline_tests": 30,
@@ -171,14 +170,14 @@
     "media_or_credentials_in_repository": false
   },
   "public_release_checks": {
-    "version": "0.4.0",
-    "offline_tests_passed": 167,
-    "python": 113,
+    "version": "0.4.1",
+    "offline_tests_passed": 181,
+    "python": 127,
     "node": 54,
     "loopback_http_skips": 0,
     "upstream_hashes": 38,
     "private_paths_or_credentials_in_new_public_files": false,
-    "weights_or_private_reference_audio_bundled": false
+    "private_reference_audio_bundled": false
   },
   "public_release_checks_v030": {
     "version": "0.3.0",
@@ -189,6 +188,32 @@
     "media_or_credentials_in_repository": false
   },
   "local_voice_engine": {
+    "version": "0.4.1",
+    "backend": "voxcpm2_mlx",
+    "actual_model_synthesis_passed": true,
+    "pinned_model_file_sha256_check": "all five files verified",
+    "reference_audio_conditioning": "real local synthesis tested; reference material is private and not distributed",
+    "user_reference_audition_acceptance": "accepted for this user; not a general quality benchmark",
+    "default_voice_http_test": "omitting voice uses the configured primary default; audio bytes match the accepted trial under identical input and generation controls",
+    "local_service_health": "ready",
+    "runtime_reference_location": "independent private voice directory, outside Skill and temporary runs",
+    "new_project_preferences": "actual local preference path tested for new topic and example; explicit override and portable defaults passed",
+    "global_public_default_changed": false,
+    "private_preferences_published": false,
+    "automatic_fallback": false,
+    "continuous_cli_alignment": "alignment_pending"
+  },
+  "public_release_checks_v040": {
+    "version": "0.4.0",
+    "offline_tests_passed": 167,
+    "python": 113,
+    "node": 54,
+    "loopback_http_skips": 0,
+    "upstream_hashes": 38,
+    "private_paths_or_credentials_in_new_public_files": false,
+    "weights_or_private_reference_audio_bundled": false
+  },
+  "local_voice_engine_v040": {
     "version": "0.4.0",
     "backend": "voxcpm2_mlx",
     "platform_scope": "native Apple Silicon macOS",

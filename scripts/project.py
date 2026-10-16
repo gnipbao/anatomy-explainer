@@ -19,6 +19,8 @@ compile_subtitles = _subtitle_module.compile_subtitles
 ID = re.compile(r'^[a-z][a-z0-9-]{0,63}$')
 TOKEN = re.compile(r'^--anatomy-(page|card|text|strong|muted|paper|face|top|shade-[0-3]|lit-top|lit-shade|hi|mid|lo|faint|lit|halo|dot|red|green|blue)$')
 COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
+VOICE_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
+TTS_PROVIDERS = ('doubao','local','say','external')
 
 def read(path):
     return json.loads(Path(path).read_text(encoding='utf-8'))
@@ -138,9 +140,58 @@ def narration_fingerprint(job):
     data={'language':job['language'],'tts':job.get('tts',{}),'scenes':[{k:s.get(k,0) for k in ['id','narration','hold_seconds']} for s in job['scenes']]}
     return hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
 
+def default_preferences_path():
+    return Path.home()/'.config/anatomy-explainer/preferences.json'
+
+def project_preferences(args):
+    """Read only portable TTS choices; credentials and local paths never enter jobs."""
+    explicit=getattr(args,'preferences_file',None)
+    if getattr(args,'ignore_preferences',False):
+        if explicit: raise ValueError('--ignore-preferences and --preferences-file are mutually exclusive')
+        return {}
+    path=Path(explicit).expanduser() if explicit else default_preferences_path()
+    if not path.exists():
+        if explicit: raise ValueError(f'Preferences file does not exist: {path}')
+        return {}
+    try:
+        if path.stat().st_size>16384: raise ValueError('preferences file exceeds 16 KiB')
+        def unique_object(pairs):
+            result={}
+            for key,value in pairs:
+                if key in result: raise ValueError('duplicate preferences field')
+                result[key]=value
+            return result
+        data=json.loads(path.read_text(encoding='utf-8'),object_pairs_hook=unique_object)
+        if not isinstance(data,dict) or set(data)!={'schema_version','tts'}:
+            raise ValueError('preferences require only schema_version and tts')
+        if type(data['schema_version']) is not int or data['schema_version']!=1:
+            raise ValueError('preferences schema_version must be 1')
+        tts=data['tts']
+        if not isinstance(tts,dict) or set(tts)-{'provider','local_voice','segment_mode'}:
+            raise ValueError('preferences tts allows only provider, local_voice and segment_mode')
+        if 'provider' in tts and (not isinstance(tts['provider'],str) or tts['provider'] not in TTS_PROVIDERS):
+            raise ValueError('preferences tts.provider must be doubao, local, say or external')
+        if 'local_voice' in tts and (not isinstance(tts['local_voice'],str) or not VOICE_ID.fullmatch(tts['local_voice'])):
+            raise ValueError('preferences tts.local_voice must be a registered voice name without paths')
+        if 'segment_mode' in tts and (not isinstance(tts['segment_mode'],str) or tts['segment_mode'] not in ('phrases','scene')):
+            raise ValueError('preferences tts.segment_mode must be phrases or scene')
+        return dict(tts)
+    except (ValueError,OSError,UnicodeError) as error:
+        raise ValueError(f'Invalid preferences file: {error}') from None
+
 def init(args):
     dest=Path(args.project).resolve()
     if dest.exists(): raise ValueError('project already exists; choose a new directory')
+    preferences=project_preferences(args)
+    provider=getattr(args,'tts_provider',None)
+    if provider is not None and provider not in TTS_PROVIDERS: raise ValueError('invalid TTS provider override')
+    if args.example:
+        job=read(ROOT/'examples'/args.example/'job.json')
+    else:
+        job={'schema_version':1,'topic':args.topic,'language':args.language,'theme':args.theme,'topic_pack':'general-science','audience':'普通成年观众','content_ready':False,'video':{'width':1920,'height':1080,'fps':30},'tts':{'provider':'doubao','segment_mode':'phrases'},'presentation':{'captions':{'mode':'phrase','style':'cinema','placement':'bottom'}},'sources':[],'scenes':[]}
+    job['tts'].update(preferences)
+    if provider is not None: job['tts']['provider']=provider
+    if job['tts'].get('provider')=='external': job['tts']['segment_mode']='scene'
     dest.parent.mkdir(parents=True,exist_ok=True)
     dest.mkdir()
     if args.example:
@@ -148,9 +199,8 @@ def init(args):
             source=ROOT/'examples'/(name if name in ['learning-checks.json','brief.json'] else f'token-bucket/{name}')
             shutil.copy2(source,dest/name)
     else:
-        job={'schema_version':1,'topic':args.topic,'language':args.language,'theme':args.theme,'topic_pack':'general-science','audience':'普通成年观众','content_ready':False,'video':{'width':1920,'height':1080,'fps':30},'tts':{'provider':'doubao','segment_mode':'phrases'},'presentation':{'captions':{'mode':'phrase','style':'cinema','placement':'bottom'}},'sources':[],'scenes':[]}
-        write(dest/'job.json',job)
         (dest/'mechanism.mjs').write_text("export function mount(){ throw new Error('Author a topic-specific mechanism and pure frame(t) first. See SKILL.md.'); }\n")
+    write(dest/'job.json',job)
     print(f'Created project: {dest}')
 
 def build(args):
@@ -192,6 +242,10 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest='command',required=True)
     a=sub.add_parser('init'); a.add_argument('--project',required=True); a.add_argument('--topic',default='请填写主题'); a.add_argument('--language',default='zh-CN'); a.add_argument('--theme',default='anatomy-official-light'); a.add_argument('--example',choices=['token-bucket'])
+    a.add_argument('--tts-provider',choices=TTS_PROVIDERS,help='Override the TTS provider for this new project')
+    preferences=a.add_mutually_exclusive_group()
+    preferences.add_argument('--preferences-file',help='Read an explicit local preferences file; missing files are errors')
+    preferences.add_argument('--ignore-preferences',action='store_true',help='Use portable defaults without reading local preferences')
     for command in ['build','check']:
         a=sub.add_parser(command); a.add_argument('--project',required=True); a.add_argument('--theme-file'); a.add_argument('--topic-pack-file'); a.add_argument('--force',action='store_true')
     args=p.parse_args()

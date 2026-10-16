@@ -1,6 +1,6 @@
 # Anatomy 科普视频 Skill
 
-给一个主题，先用 **grill-me / grilling** 分轮审题，锁定受众和核心解释，再交付 **Anatomy 等轴测机制画面 + 旁白 + 电影式字幕 + MP4**。默认中文、官方浅色主题、豆包 Seed TTS 2.0；另有官方 dark base 加视频对比度增强的黑色主题，支持自定义视觉主题、科普题材插件、可独立运行的 VoxCPM2 本地配音引擎和其他服务音频导入。
+给一个主题，先用 **grill-me / grilling** 分轮审题，锁定受众和核心解释，再交付 **Anatomy 等轴测机制画面 + 旁白 + 电影式字幕 + MP4**。默认中文、官方浅色主题；配音采用用户指定值或本机偏好，未配置时使用豆包 Seed TTS 2.0。另有官方 dark base 加视频对比度增强的黑色主题，支持自定义视觉主题、科普题材插件、可独立运行的 VoxCPM2 本地配音引擎和其他服务音频导入。
 
 这是在 [wheresryan22/anatomy](https://github.com/wheresryan22/anatomy) 之上新建的视频工作流包。官方几何 kit 原样保留，固定版本与文件哈希见 `upstream.lock.json`。不是 Anatomy 官方的视频产品。
 
@@ -32,15 +32,26 @@ python3 scripts/install.py --target "$HOME/.agents/skills/anatomy-explainer"
 
 ## 配音配置
 
-默认 `job.tts.provider = "doubao"`。在运行环境安全配置 `DOUBAO_API_KEY`；旧控制台使用 `DOUBAO_APP_ID` + `DOUBAO_ACCESS_KEY`。不要把值发给代理或写进项目文件。默认音色 `zh_female_vv_uranus_bigtts` 与资源 `seed-tts-2.0`；其他音色/资源在 job 中显式配置并核对控制台支持。
+新项目可从 `~/.config/anatomy-explainer/preferences.json` 读取本机配音偏好。没有该文件时使用 `job.tts.provider = "doubao"`；选择豆包时，在运行环境安全配置 `DOUBAO_API_KEY`，旧控制台使用 `DOUBAO_APP_ID` + `DOUBAO_ACCESS_KEY`。不要把值发给代理或写进项目文件。豆包默认音色 `zh_female_vv_uranus_bigtts` 与资源 `seed-tts-2.0`；其他音色/资源在 job 中显式配置并核对控制台支持。
 
-新建项目和令牌桶样例默认 `tts.segment_mode: "phrases"`：先拆语义短句，每句分别合成、归一化并实测音频长度，再合并为场景音轨。`timing.json` 保存 `captions.alignment: "measured-phrases"` 和每句的实测边界，电影式 SRT 每句一条，按帧对齐并为连续句保留两帧间隔；场景末尾的 `hold_seconds` 不延长字幕。它不是逐词或逐字对齐。旧 job 未写 `segment_mode` 时仍走 `scene` 路径；不要把按字数估算的显示时间称为实测。
+新建项目和令牌桶样例在没有偏好覆盖时使用 `tts.segment_mode: "phrases"`：先拆语义短句，每句分别合成、归一化并实测音频长度，再合并为场景音轨。`timing.json` 保存 `captions.alignment: "measured-phrases"` 和每句的实测边界，电影式 SRT 每句一条，按帧对齐并为连续句保留两帧间隔；场景末尾的 `hold_seconds` 不延长字幕。它不是逐词或逐字对齐。旧 job 未写 `segment_mode` 时仍走 `scene` 路径；不要把按字数估算的显示时间称为实测。
 
 `language` 不是翻译器。最终讲稿、字幕和问题应先写成目标语言；非中文豆包必须显式给出支持该语言的 voice。本地 `say` 从已安装语音中按语言匹配，可指定 voice。外部服务把每场景的真实音频放入 `audio-input/`，并使用 `tts.segment_mode: "scene"`；`external` 不支持自动实测短句边界。完整说明见 `references/tts.md`。
 
 ### 独立本地引擎：VoxCPM2
 
-服务与 Skill 分开安装，模型文件与参考音色留在本机。新项目继续默认豆包；本地服务就绪后，只改 `tts.provider` 为 `"local"`，原音色和资源配置可保留，字幕与渲染命令照常使用。本地音色 ID 用 `tts.local_voice`，默认 `"default"`，不会误用豆包的 `tts.voice`。
+服务与 Skill 分开安装，模型文件与参考音色留在本机。本地服务就绪后，只改 `tts.provider` 为 `"local"`，原音色和资源配置可保留，字幕与渲染命令照常使用。本地音色 ID 用 `tts.local_voice`，默认 `"default"`，不会误用豆包的 `tts.voice`。
+
+要让后续新主题和示例采用本机默认音色，可创建私有偏好文件 `~/.config/anatomy-explainer/preferences.json`：
+
+```json
+{
+  "schema_version": 1,
+  "tts": {"provider": "local", "local_voice": "default", "segment_mode": "phrases"}
+}
+```
+
+在引擎私有配置中为 `voice.id: "default"` 设置已试听、本人或已获授权的参考音色；参考文件和路径不写进偏好或公开包。偏好只影响 `project.py init`，不会改写已有 job。`init --tts-provider doubao` 可显式覆盖服务；`--ignore-preferences` 忽略本机偏好，或用 `--preferences-file FILE` 指定另一份偏好，两者互斥。用户本轮明确指定的配音优先。
 
 在包目录准备独立 Python 3.12 环境和四份模型 JSON（需要 `uv`；命令不会下载主权重）：
 
@@ -60,7 +71,7 @@ python3 "$HOME/.local/share/anatomy-voice-engine/app/voice_engine.py" serve
 
 ## 跑通完整样例
 
-以下在包目录执行。默认豆包会发起真实合成请求，按服务计费；先 dry-run 只检查结构。
+以下在包目录执行。初始化会采用本机偏好；未配置时使用豆包，真实云端请求按服务计费。先查看生成的 job，并 dry-run 检查结构。
 
 ```bash
 python3 scripts/project.py init --project /tmp/anatomy-demo --example token-bucket
