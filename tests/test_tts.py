@@ -177,6 +177,7 @@ class AudioIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)
             document = job("doubao")
+            document["presentation"] = {"captions": {"style": "kinetic"}}
             document["tts"]["segment_mode"] = "phrases"
             document["scenes"][0].update(narration="声音来自振动。振动推动空气。", hold_seconds=0.15)
             document["scenes"].append({"id": "s02", "title": "传播", "narration": "空气继续传递振动。", "hold_seconds": 0.05})
@@ -238,6 +239,23 @@ class AudioIntegrationTests(unittest.TestCase):
             for name, expected in previous.items():
                 self.assertEqual((project / name).read_bytes(), expected)
             self.assertFalse(list(project.glob(".tts-stage-*")))
+
+    def test_cinema_srt_formats_display_without_changing_measured_audio_cues(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            document = job("doubao")
+            document['video'] = {'width': 1920, 'height': 1080, 'fps': 24}
+            document['tts']['segment_mode'] = 'phrases'
+            document['scenes'][0].update(narration='声音来自振动。振动推动空气。', hold_seconds=0.2)
+            with mock.patch.object(tts, 'synthesize_doubao', side_effect=lambda s, c, p: test_tone(p, 2)):
+                timing = tts.execute(project, document)
+            self.assertEqual([c['text'] for c in timing['captions']['cues']], ['声音来自振动。', '振动推动空气。'])
+            self.assertAlmostEqual(timing['captions']['cues'][0]['end'], 2, places=3)
+            srt = (project/'narration.srt').read_text()
+            self.assertIn('00:00:00,000 --> 00:00:01,916', srt)
+            self.assertIn('00:00:02,000 --> 00:00:04,000', srt)
+            self.assertNotIn('。', srt)
+            self.assertIn('声音来自振动\n', srt)
 
     def test_phrase_publish_permission_failure_rolls_back_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:

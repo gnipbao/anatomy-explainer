@@ -36,6 +36,9 @@ _segments_spec = importlib.util.spec_from_file_location("anatomy_text_segments",
 _segments_module = importlib.util.module_from_spec(_segments_spec)
 _segments_spec.loader.exec_module(_segments_module)
 split_phrases = _segments_module.split_phrases
+_subtitle_spec = importlib.util.spec_from_file_location("anatomy_subtitle_tools", Path(__file__).with_name("subtitle_tools.py"))
+_subtitle_module = importlib.util.module_from_spec(_subtitle_spec)
+_subtitle_spec.loader.exec_module(_subtitle_module)
 
 
 class TTSError(Exception):
@@ -422,7 +425,13 @@ def execute(project, job, force=False):
                   "duration": round(full_duration, 6), "scenes": measured}
         if phrase_mode:
             timing["captions"] = {"alignment": "measured-phrases", "cues": caption_cues}
-        (stage / "narration.srt").write_text("\n".join(subtitle_blocks), encoding="utf-8")
+        srt = "\n".join(subtitle_blocks)
+        if phrase_mode and _subtitle_module.cinema_enabled(job):
+            try:
+                srt = _subtitle_module.compile_subtitles(job, timing)['srt']
+            except ValueError as error:
+                raise TTSError(str(error)) from error
+        (stage / "narration.srt").write_text(srt, encoding="utf-8")
         (stage / "timing.json").write_text(json.dumps(timing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         check_outputs(project, force)
         publish_bundle(project, stage)

@@ -2,6 +2,7 @@
 """Create and validate portable Anatomy video projects; never generates factual content."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -10,6 +11,11 @@ import shutil
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+_subtitle_spec = importlib.util.spec_from_file_location('anatomy_subtitle_tools', ROOT/'scripts/subtitle_tools.py')
+_subtitle_module = importlib.util.module_from_spec(_subtitle_spec)
+_subtitle_spec.loader.exec_module(_subtitle_module)
+cinema_enabled = _subtitle_module.cinema_enabled
+compile_subtitles = _subtitle_module.compile_subtitles
 ID = re.compile(r'^[a-z][a-z0-9-]{0,63}$')
 TOKEN = re.compile(r'^--anatomy-(page|card|text|strong|muted|paper|face|top|shade-[0-3]|lit-top|lit-shade|hi|mid|lo|faint|lit|halo|dot|red|green|blue)$')
 COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
@@ -31,9 +37,12 @@ def validate_presentation(options, scene=False):
     placements={'auto','bottom','left','right','top'}
     if 'captions' in options:
         captions=options['captions']
-        if not isinstance(captions,dict) or set(captions)-{'mode','placement'}: raise ValueError('invalid captions options')
+        if not isinstance(captions,dict) or set(captions)-{'mode','placement','style','keep_together'}: raise ValueError('invalid captions options')
         if captions.get('mode','phrase') not in {'phrase','scene'}: raise ValueError('caption mode must be phrase or scene')
+        if captions.get('style','cinema') not in {'cinema','kinetic'}: raise ValueError('caption style must be cinema or kinetic')
         if captions.get('placement','auto') not in placements: raise ValueError('invalid caption placement')
+        terms=captions.get('keep_together',[])
+        if not isinstance(terms,list) or len(terms)>64 or any(not isinstance(term,str) or not term.strip() or len(term)>100 or any(ord(c)<32 for c in term) for term in terms): raise ValueError('caption keep_together must contain short nonempty terms')
     if 'caption_placement' in options and options['caption_placement'] not in placements: raise ValueError('invalid scene caption placement')
     if 'reduced_motion' in options and not isinstance(options['reduced_motion'],bool): raise ValueError('reduced_motion must be boolean')
     if 'zoom' in options: number(options['zoom'],'zoom',1,1.12)
@@ -139,7 +148,7 @@ def init(args):
             source=ROOT/'examples'/(name if name in ['learning-checks.json','brief.json'] else f'token-bucket/{name}')
             shutil.copy2(source,dest/name)
     else:
-        job={'schema_version':1,'topic':args.topic,'language':args.language,'theme':args.theme,'topic_pack':'general-science','audience':'普通成年观众','content_ready':False,'video':{'width':1920,'height':1080,'fps':30},'tts':{'provider':'doubao','segment_mode':'phrases'},'presentation':{'captions':{'mode':'phrase','placement':'auto'}},'sources':[],'scenes':[]}
+        job={'schema_version':1,'topic':args.topic,'language':args.language,'theme':args.theme,'topic_pack':'general-science','audience':'普通成年观众','content_ready':False,'video':{'width':1920,'height':1080,'fps':30},'tts':{'provider':'doubao','segment_mode':'phrases'},'presentation':{'captions':{'mode':'phrase','style':'cinema','placement':'bottom'}},'sources':[],'scenes':[]}
         write(dest/'job.json',job)
         (dest/'mechanism.mjs').write_text("export function mount(){ throw new Error('Author a topic-specific mechanism and pure frame(t) first. See SKILL.md.'); }\n")
     print(f'Created project: {dest}')
@@ -151,10 +160,14 @@ def build(args):
     pack=topic_pack_for(job,args.topic_pack_file,dest)
     timing=timing_for(job,read(dest/'timing.json'))
     if not (dest/'mechanism.mjs').is_file(): raise ValueError('mechanism.mjs missing')
-    targets=[dest/p for p in ['index.html','data.json','runtime.mjs','presentation.mjs','video.css','assets','topic-pack.json','build-manifest.json']]
+    targets=[dest/p for p in ['index.html','data.json','runtime.mjs','presentation.mjs','subtitles.mjs','video.css','assets','topic-pack.json','build-manifest.json','cinematic.srt','subtitle-qc.json']]
     if not args.force and any(p.exists() for p in targets): raise ValueError('build output exists; use --force after reviewing changes')
     for p in targets:
         if p.is_symlink(): raise ValueError('refusing a symlink build target')
+    if (dest/'narration.srt').is_symlink(): raise ValueError('refusing a symlink subtitle target')
+    subtitle_bundle=compile_subtitles(job,timing) if cinema_enabled(job) and timing.get('captions',{}).get('cues') else None
+    if subtitle_bundle and any(issue.get('severity')=='error' for issue in subtitle_bundle['track'].get('issues',[])):
+        raise ValueError('Cinema subtitle layout failed: review long cues or protected terms; do not shrink text or invent speech timing.')
     assets=dest/'assets'
     assets.mkdir(exist_ok=True)
     kit_dest=assets/'kit'
@@ -163,8 +176,12 @@ def build(args):
         shutil.rmtree(kit_dest)
     shutil.copytree(ROOT/'vendor/anatomy/kit',kit_dest)
     shutil.copy2(ROOT/'vendor/anatomy/LICENSE',assets/'ANATOMY-LICENSE')
-    for name in ['runtime.mjs','presentation.mjs','video.css']:
+    for name in ['runtime.mjs','presentation.mjs','subtitles.mjs','video.css']:
         shutil.copy2(ROOT/'scripts'/name,dest/name)
+    if subtitle_bundle:
+        for name in ['cinematic.srt','narration.srt']:
+            (dest/name).write_text(subtitle_bundle['srt'],encoding='utf-8')
+        write(dest/'subtitle-qc.json',subtitle_bundle['track'])
     write(dest/'topic-pack.json',pack)
     write(dest/'data.json',{'job':job,'timing':timing,'theme':theme})
     (dest/'index.html').write_text('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Anatomy explainer</title><link rel="stylesheet" href="assets/kit/iso.css"><link rel="stylesheet" href="video.css"></head><body class="iso"><main id="film"><div id="eyebrow"></div><h1 id="title"></h1><section class="iso-plate"><div class="iso-plate-corners"><span class="iso-plate-corner" data-corner="fig" id="figure-no"></span><span class="iso-plate-corner" data-corner="title" id="topic"></span><span class="iso-plate-corner" data-corner="hint" id="hint"></span><span class="iso-plate-corner" data-corner="readout" id="readout"></span></div><div id="mechanism"></div></section><p id="caption"></p><p id="subtitle"></p><footer id="source"></footer><div id="progress"></div></main><script type="module" src="runtime.mjs"></script></body></html>\n',encoding='utf-8')

@@ -78,8 +78,10 @@ window.renderFrame = async time => {
   $('subtitle').style.opacity = String(caption.opacity);
   $('subtitle').dataset.alignment = caption.alignment;
   $('subtitle').dataset.mode = caption.mode;
+  $('subtitle').dataset.style = caption.style;
   $('subtitle').dataset.cue = caption.cue?.id || '';
   film.dataset.captionPlacement = caption.placement;
+  film.dataset.captionStyle = caption.style;
   film.dataset.reducedMotion = String(state.reduced_motion);
   rail.style.opacity = String(pane.opacity);
   rail.style.transform = `translateY(${pane.offset_y * unit}px)`;

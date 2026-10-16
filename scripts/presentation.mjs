@@ -1,3 +1,5 @@
+import {buildCinemaTrack} from './subtitles.mjs';
+
 /**
  * Deterministic presentation state, with no DOM, clock or random dependency.
  * Coordinates are percentages of the film, in the safe areas from video.css.
@@ -100,7 +102,7 @@ function wrapCaption(text, capacity) {
   return [tokens.slice(0, best).join('').trim(), tokens.slice(best).join('').trim()].filter(Boolean);
 }
 
-function captionLayout(job, scene, sceneIndex, cueIndex, mode, text) {
+function kineticCaptionLayout(job, scene, sceneIndex, cueIndex, mode, text) {
   const portrait = finite(job.video?.height, 1080) > finite(job.video?.width, 1920);
   const boxes = portrait ? portraitBoxes : landscapeBoxes;
   // An explicit global position is a deliberate override of scene positions.
@@ -124,9 +126,23 @@ function focusFor(value) {
     : [clamp(finite(value?.x, .5)), clamp(finite(value?.y, .5))];
 }
 
+function cinemaCaptionLayout(job, cue) {
+  const portrait = finite(job.video?.height, 1080) > finite(job.video?.width, 1920);
+  // Film subtitles use one stable full-frame center, independent of stage layout,
+  // theme, scene and cue length. Both one and two lines share the bottom baseline.
+  const box = portrait
+    ? {x: 8, y: 81, width: 84, height: 11, align: 'center'}
+    : {x: 10, y: 84, width: 80, height: 11, align: 'center'};
+  return {
+    placement: 'bottom', ...box, font_size: 42, font_scale: 1,
+    lines: cue?.lines || [], display_text: cue?.display_text || '',
+  };
+}
+
 /**
  * Current scene/progress, one caption cue and deterministic camera/pane values.
- * Measured cue start/end/text are copied unchanged. No word alignment is inferred.
+ * Cinema uses a derived frame-timed display track; cue/source_text retain the
+ * original narration cue. No word alignment is inferred from phrase durations.
  */
 export function computePresentation(job, timing, time) {
   if (!Number.isFinite(time)) throw new TypeError('presentation time must be finite');
@@ -140,21 +156,33 @@ export function computePresentation(job, timing, time) {
   const duration = Math.max(.000001, track.end - track.start);
   const progress = clamp((t - track.start) / duration);
   const mode = job.presentation?.captions?.mode === 'scene' ? 'scene' : 'phrase';
+  // Explicit whole-scene mode remains a legacy escape hatch. It uses the old
+  // presentation instead of squeezing an entire narration into cinema lines.
+  const style = mode === 'scene' || job.presentation?.captions?.style === 'kinetic' ? 'kinetic' : 'cinema';
   const suppliedCues = mode !== 'scene' && ['measured-phrases', 'manual'].includes(timing.captions?.alignment) && Array.isArray(timing.captions.cues);
   const alignment = mode === 'scene' ? 'scene' : suppliedCues ? timing.captions.alignment : 'estimated-phrases';
-  const cues = mode === 'scene' ? [{ id: `${scene.id}-scene`, scene_id: scene.id, start: track.start, end: track.end, text: scene.narration }]
-    : suppliedCues ? timing.captions.cues.filter(cue => cue.scene_id === scene.id && Number.isFinite(cue.start) && Number.isFinite(cue.end) && cue.end > cue.start && typeof cue.text === 'string')
-    : estimatedCues(scene, track);
-  // Half-open intervals prevent a stale sentence on the exact next cue boundary.
+  const sourceCues = mode === 'scene' ? [{ id: `${scene.id}-scene`, scene_id: scene.id, start: track.start, end: track.end, text: scene.narration }]
+    : suppliedCues ? timing.captions.cues.filter(cue => Number.isFinite(cue.start) && Number.isFinite(cue.end) && cue.end > cue.start && typeof cue.text === 'string')
+    : timing.scenes.flatMap((row, i) => estimatedCues(job.scenes.find(item => item.id === row.id) || job.scenes[i], row));
+  // Derive the complete cinema track, so random seeks and nearby scene changes
+  // cannot change frame rounding or the two-frame gap decisions.
+  const cinemaTrack = style === 'cinema' ? buildCinemaTrack(job, {...timing, captions: {...timing.captions, alignment}}, sourceCues) : null;
+  // Frame rounding may place a display boundary just before or after its raw
+  // scene boundary. Query cinema globally so SRT and burn-in share every frame;
+  // the mechanism/camera scene continues using the original scene timing.
+  const cues = cinemaTrack?.cues || sourceCues.filter(cue => cue.scene_id === scene.id);
+  // Half-open frame-aligned intervals prevent a stale sentence at the next cue.
   const cueIndex = cues.findIndex(cue => t >= cue.start && t < cue.end);
-  const cue = cueIndex >= 0 ? { ...cues[cueIndex] } : null;
+  const displayCue = cueIndex >= 0 ? { ...cues[cueIndex] } : null;
+  const cue = displayCue ? { ...(displayCue.source || displayCue) } : null;
   const reducedMotion = job.presentation?.reduced_motion === true;
-  const cueDuration = cue ? cue.end - cue.start : 0;
-  const fade = cue ? Math.min(.2, cueDuration * .24) : 0;
-  const opacity = !cue ? 0 : reducedMotion || mode === 'scene' ? 1
-    : Math.min(smooth((t - cue.start) / fade), smooth((cue.end - t) / fade));
-  const text = cue?.text || '';
-  const layout = captionLayout(job, scene, index, cueIndex, mode, text);
+  const cueDuration = displayCue ? displayCue.end - displayCue.start : 0;
+  const fade = displayCue && style === 'kinetic' ? Math.min(.2, cueDuration * .24) : 0;
+  const opacity = !displayCue?.text ? 0 : style === 'cinema' || reducedMotion || mode === 'scene' ? 1
+    : Math.min(smooth((t - displayCue.start) / fade), smooth((displayCue.end - t) / fade));
+  const text = displayCue?.text || '';
+  const layout = style === 'cinema' ? cinemaCaptionLayout(job, displayCue)
+    : kineticCaptionLayout(job, scene, index, cueIndex, mode, text);
   const entrance = smooth((t - track.start) / Math.min(.42, duration * .18));
   const focus = focusFor(scene.presentation?.focus || job.presentation?.focus);
   const zoom = clamp(finite(scene.presentation?.zoom, finite(job.presentation?.zoom, 1.035)), 1, 1.12);
@@ -169,7 +197,20 @@ export function computePresentation(job, timing, time) {
   return {
     time: t, index, scene, scene_id: scene.id, progress, alignment,
     estimated: alignment === 'estimated-phrases', reduced_motion: reducedMotion,
-    caption: { text, cue, cue_index: cueIndex, count: cues.length, mode, alignment, estimated: alignment === 'estimated-phrases', opacity, ...layout, offset_y: reducedMotion ? 0 : (1 - opacity) * .65, fade_seconds: fade },
+    caption: {
+      text, cue, source_text: cue?.text || '', display_cue: displayCue,
+      source_start: displayCue?.source_start ?? cue?.start ?? null,
+      source_end: displayCue?.source_end ?? cue?.end ?? null,
+      start: displayCue?.start ?? null, end: displayCue?.end ?? null,
+      start_frame: displayCue?.start_frame ?? null, end_frame: displayCue?.end_frame ?? null,
+      cue_index: cueIndex, count: cues.length, mode, style, alignment,
+      estimated: alignment === 'estimated-phrases', opacity, ...layout,
+      offset_y: style === 'cinema' || reducedMotion ? 0 : (1 - opacity) * .65,
+      fade_seconds: fade,
+      qc: cinemaTrack ? {issues: cinemaTrack.issues, profile: cinemaTrack.profile,
+        overflow: displayCue?.overflow || false, reading_speed: displayCue?.reading_speed ?? null,
+        line_limit: displayCue?.line_limit ?? null, duration: displayCue?.duration ?? null} : null,
+    },
     camera,
     pane: { opacity: reducedMotion ? 1 : .72 + .28 * entrance, offset_y: reducedMotion ? 0 : 8 * (1 - entrance) },
     reveal: { scene: progress, film: clamp(t / timing.duration), completed: index },

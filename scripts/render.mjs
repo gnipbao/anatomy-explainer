@@ -307,6 +307,8 @@ export async function render(options) {
     let lastPresentation = null;
     const observedCues = new Set();
     const observedPlacements = new Set();
+    const observedStyles = new Set();
+    let maxSubtitleLines = 0;
     let captionAlignment = null;
     for (const frame of frameNumbers) {
       check();
@@ -320,8 +322,12 @@ export async function render(options) {
         const box=node.getBoundingClientRect(),tb=title.getBoundingClientRect(),sb=source.getBoundingClientRect();
         const overlaps=(a,b)=>a.left<b.right-1&&a.right>b.left+1&&a.top<b.bottom-1&&a.bottom>b.top+1;
         const visible=state.caption.opacity>.05&&node.textContent.trim().length>0;
+        const css=getComputedStyle(node),cinema=state.caption.style==='cinema';
+        const lines=state.caption.lines?.length||0;
+        const cinemaFailed=visible&&cinema&&(state.caption.qc?.overflow||lines>2||state.caption.font_scale!==1||state.caption.opacity!==1||state.caption.offset_y!==0||Math.abs((box.left+box.right)/2-innerWidth/2)>1||css.color!=='rgb(255, 255, 255)'||parseFloat(css.webkitTextStrokeWidth)<=0||css.alignItems!=='flex-end');
         return {scene_id:state.scene_id,cue_id:state.caption.cue?.id||null,alignment:state.alignment,
-          placement:state.caption.placement,visible,
+          style:state.caption.style||'kinetic',placement:state.caption.placement,visible,line_count:lines,cinema_failed:!!cinemaFailed,
+          font_size:css.fontSize,color:css.color,stroke_width:css.webkitTextStrokeWidth,
           clipped:visible&&(box.left<-.5||box.top<-.5||box.right>innerWidth+.5||box.bottom>innerHeight+.5),
           overflow:visible&&(node.scrollHeight>node.clientHeight+2||node.scrollWidth>node.clientWidth+2),
           overlaps_title:visible&&overlaps(box,tb),overlaps_source:visible&&overlaps(box,sb),
@@ -329,9 +335,11 @@ export async function render(options) {
           caption_box:{x:box.x,y:box.y,width:box.width,height:box.height}};
       })()`);
       if (lastPresentation) {
-        if (lastPresentation.clipped || lastPresentation.overflow || lastPresentation.overlaps_title || lastPresentation.overlaps_source || lastPresentation.title_clipped) throw new Error('Presentation text failed safe-area or overflow verification. Review caption position and title length.');
+        if (lastPresentation.clipped || lastPresentation.overflow || lastPresentation.overlaps_title || lastPresentation.overlaps_source || lastPresentation.title_clipped || lastPresentation.cinema_failed) throw new Error('Presentation text failed safe-area, overflow or cinema subtitle verification. Review cue layout, style and title length.');
         if (lastPresentation.visible && lastPresentation.cue_id) observedCues.add(lastPresentation.cue_id);
         observedPlacements.add(lastPresentation.placement);
+        observedStyles.add(lastPresentation.style);
+        maxSubtitleLines=Math.max(maxSubtitleLines,lastPresentation.line_count);
         captionAlignment = lastPresentation.alignment;
       }
       check();
@@ -367,7 +375,7 @@ export async function render(options) {
       requestedDuration: config.requestedDuration, narrationDuration, duration: Number(probe.format.duration), videoDuration: Number(video.duration),
       width: video.width, height: video.height, fps: actualFps, frameCount: Number(video.nb_read_frames),
       videoCodec: video.codec_name, audioCodec: audio.codec_name, pixelFormat: video.pix_fmt,
-      presentation: captionAlignment ? {alignment:captionAlignment,visibleCueCount:observedCues.size,placements:[...observedPlacements],safeAreasPassed:true} : null,
+      presentation: captionAlignment ? {alignment:captionAlignment,visibleCueCount:observedCues.size,styles:[...observedStyles],placements:[...observedPlacements],maxSubtitleLines,safeAreasPassed:true,cinemaStylePassed:observedStyles.has('cinema')?true:null} : null,
       evidence: { capture: 'one CDP PNG per renderFrame(frame / fps)', timeline: 'ceil(timing.duration * fps) / fps', audio: 'narration duration verified within 0.01s of timing.duration; apad extends only to the rounded frame timeline', buildManifestVerified: manifestVerified, verification: 'ffprobe -count_frames', pageJavaScriptErrors: 0, externalRequests: 0, wallClockRecording: false },
     };
     const reportTemp = join(project, `.anatomy-report-${process.pid}-${Date.now()}.json`); pendingFiles.push(reportTemp);

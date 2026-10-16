@@ -33,6 +33,8 @@ class ProjectContract(unittest.TestCase):
             job=p.read(target/'job.json')
             self.assertEqual(job['tts']['segment_mode'],'phrases')
             self.assertEqual(job['presentation']['captions']['mode'],'phrase')
+            self.assertEqual(job['presentation']['captions']['style'],'cinema')
+            self.assertEqual(job['presentation']['captions']['placement'],'bottom')
     def make_timing(self):
         job=p.read(p.ROOT/'examples/token-bucket/job.json')
         timing={'duration':3,'job_fingerprint':p.narration_fingerprint(job),'scenes':[{'id':s['id'],'start':i,'end':i+1,'duration':1} for i,s in enumerate(job['scenes'])],
@@ -52,4 +54,21 @@ class ProjectContract(unittest.TestCase):
     def test_invalid_motion_scale_is_rejected_before_build(self):
         job=p.read(p.ROOT/'examples/token-bucket/job.json');job['presentation']['zoom']=8
         with self.assertRaises(ValueError):p.validate(job)
+    def test_cinema_build_blocks_overflow_and_exports_matching_srt_and_engine(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target=Path(temporary)
+            job,timing=self.make_timing()
+            timing['captions']['cues'][0]['text']='字'*40
+            p.write(target/'job.json',job);p.write(target/'timing.json',timing)
+            (target/'mechanism.mjs').write_text('export function mount(){return {frame(){}};}')
+            args=SimpleNamespace(project=str(target),theme_file=None,topic_pack_file=None,force=False)
+            with self.assertRaisesRegex(ValueError,'Cinema subtitle layout'):
+                p.build(args)
+            self.assertFalse((target/'index.html').exists())
+            for cue in timing['captions']['cues']:cue['text']='测试字幕'
+            p.write(target/'timing.json',timing)
+            p.build(args)
+            self.assertTrue((target/'subtitles.mjs').is_file())
+            self.assertEqual((target/'cinematic.srt').read_text(),(target/'narration.srt').read_text())
+            self.assertEqual(p.read(target/'subtitle-qc.json')['style'],'cinema')
 if __name__=='__main__':unittest.main()

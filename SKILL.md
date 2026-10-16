@@ -1,6 +1,6 @@
 ---
 name: anatomy-explainer
-description: 从一个主题制作有事实来源、Anatomy 官方等轴测机械插画、逐场景旁白、多语言 TTS、动态短句字幕和 MP4 的科普视频。Use when the user asks for 科普视频、原理解说、机制动画、anatomy 视频，或想把主题转成可讲清因果的短片。默认中文、官方浅色主题、豆包语音；结合 grill-me 分轮审题，可扩展视觉与内容主题插件。
+description: 从一个主题制作有事实来源、Anatomy 官方等轴测机械插画、逐场景旁白、多语言 TTS、电影式短句字幕和 MP4 的科普视频。Use when the user asks for 科普视频、原理解说、机制动画、anatomy 视频，或想把主题转成可讲清因果的短片。默认中文、官方浅色主题、豆包语音；结合 grill-me 分轮审题，可扩展视觉与内容主题插件。
 ---
 
 # Anatomy 科普视频解说
@@ -11,7 +11,8 @@ description: 从一个主题制作有事实来源、Anatomy 官方等轴测机�
 
 - 首次运行：`README.md`；文件与接口：`references/project-contract.md`。
 - 选题、事实研究和画面制作：`references/production.md`。
-- 参考片拆解、机制动效、动态字幕与两套主题：`references/motion-and-captions.md`。
+- 参考片拆解、机制动效与两套主题：`references/motion-and-captions.md`。
+- 字幕排版、显示时间与质量检查：`references/subtitles.md`。
 - 配音、语言、缺少凭据：`references/tts.md`。
 - 审题、决策树与 brief 锁定：`references/grill.md`。
 - 新增视觉或内容主题：`references/plugins.md`。
@@ -55,7 +56,7 @@ python3 "$SKILL_ROOT/scripts/project.py" init --project "$RUN_DIR" --topic "用�
 
 在项目写 `model.mjs`（纯计算）和 `mechanism.mjs`（`mount(container,{kit,job})` 返回 `frame({scene,progress,time,setReadout})`）。公式、状态和数字先验证。每帧必须能按绝对时间独立重算；禁止未设种子的随机、墙钟、隐式积分或 CSS 自动循环驱动导出。接口见 `references/project-contract.md`。
 
-默认采用参考片的左侧知识栏 + 右侧主舞台，知识点和主体按节拍揭示；画面保留官方等轴测与四阶明暗。参考视频只提取节奏与机制，不打包原视频、音乐或图像。字幕按短句切换和入退场，自动在安全位置避让，也可显式指定位置；不把整段 narration 常驻在固定底栏。细则和配置见 `references/motion-and-captions.md`。
+默认采用参考片的左侧知识栏 + 右侧主舞台，知识点和主体按节拍揭示；画面保留官方等轴测与四阶明暗。参考视频只提取节奏与机制，不打包原视频、音乐或图像。旁白字幕默认电影式处理：固定在全画幅底部居中，白字黑描边、透明背景、固定字号、最多两行，同一底线直接切换；不要换位、淡入、飞入、缩放或逐字高亮。知识点标注与对白字幕分开，机制可以动，字幕阅读锚点保持稳定。中文每行最多16全角等效字符；不够就修改讲稿或人工审看切点，不能缩字硬塞。细则见 `references/subtitles.md`。
 
 ### 5. 合成音频，锁定时轴
 
@@ -69,7 +70,7 @@ python3 "$SKILL_ROOT/scripts/tts.py" --project "$RUN_DIR"
 
 默认豆包；缺凭据时继续完成研究、讲稿、分镜和机制，明确报 `audio_pending`，不要产出静音冒充旁白。用户可选 `say` 本地语音或 `external` 导入其他服务配音；切换服务须告知，不能静默降级。非中文豆包须显式选择已核对语种能力的音色；本地 say 从已安装音色中匹配目标语言，可显式指定；不支持的语言交给 external。详见 `references/tts.md`。不读取、打印或打包凭据值。
 
-工具生成逐场景 WAV、完整 WAV、短句级 SRT 和 `timing.json`；以 ffprobe 实测每短句、场景及完整音频长度驱动画面。保持旧 scene 模式兼容；旧音频的局部短句切点只能标为 estimated，manual cues 标明人工审看来源，不能声称字级或词级对齐。改旁白、音色、语言或停顿必须重新合成。
+工具生成逐场景 WAV、完整 WAV、电影式短句 SRT 和 `timing.json`；以 ffprobe 实测每短句、场景及完整音频长度驱动画面。保持旧 scene 模式兼容；旧音频的局部短句切点只能标为 estimated，manual cues 标明人工审看来源，不能声称字级或词级对齐。字幕显示可做帧对齐并略缩前句尾留两帧间隔，原始实测cue与派生显示时间须分别保留；SRT与烧录使用同一个引擎，不伪造逐词时间。改旁白、音色、语言或停顿必须重新合成。
 
 ### 6. 构建、审看、导出
 
@@ -79,11 +80,11 @@ node "$SKILL_ROOT/scripts/render.mjs" --project "$RUN_DIR" --frame 0 --still "$R
 node "$SKILL_ROOT/scripts/render.mjs" --project "$RUN_DIR"
 ```
 
-逐场景开头、关键动作、结尾截帧，同一场景至少比较两个时点，确认部件而不只是镜头变化。读取每张预览，检查真实画面和字幕、读数、裁切及接缝；默认浅色和黑色分别验收。渲染器会检查可见字幕是否越界、溢出或覆盖标题/来源，失败须修复后重跑。必要时使用官方 `vendor/anatomy/scripts/capture.mjs` / `drive.mjs` 做 4× 局部检查，几何审计与线端检查另记录；没有运行不得写“audit passed”。最终以 ffprobe 核对音视频流、尺寸、帧率、时长，试听发音、停顿和同步。已有输出默认拒覆盖；确认是本轮重建目标后才用 `--force`。浏览器或 FFmpeg 不可用时保留源码，报告阻塞，不宣称成片已完成。
+逐场景开头、关键动作、结尾截帧，同一场景至少比较两个时点，确认部件而不只是镜头变化。读取每张预览，检查真实画面和字幕、读数、裁切及接缝；默认浅色和黑色分别验收。先读 subtitle-qc.json，核对语义断行、保护术语、阅读速度和显示时长；布局错误阻断导出，告警须复核。渲染器会检查字幕底部居中、固定字号、最多两行、白字描边、无淡入位移，以及越界、溢出和标题/来源遮挡，失败须修复后重跑。必要时使用官方 `vendor/anatomy/scripts/capture.mjs` / `drive.mjs` 做 4× 局部检查，几何审计与线端检查另记录；没有运行不得写“audit passed”。最终以 ffprobe 核对音视频流、尺寸、帧率、时长，试听发音、停顿和同步。已有输出默认拒覆盖；确认是本轮重建目标后才用 `--force`。浏览器或 FFmpeg 不可用时保留源码，报告阻塞，不宣称成片已完成。
 
 ## Output Protocols
 
-项目应包含：`brief.json`、`research.md`、`script.md`、`job.json`、可选 `learning-checks.json`、`model.mjs`、`mechanism.mjs`、配音 WAV/SRT、`timing.json`、可预览 `index.html`、`video.mp4` 和 `render-report.json`。用户只要讲稿或只要设计时停在对应层。
+项目应包含：`brief.json`、`research.md`、`script.md`、`job.json`、可选 `learning-checks.json`、`model.mjs`、`mechanism.mjs`、配音 WAV、`narration.srt`/`cinematic.srt`、`subtitle-qc.json`、`timing.json`、可预览 `index.html`、`video.mp4` 和 `render-report.json`。用户只要讲稿或只要设计时停在对应层。
 
 交付说明写：主题与解释范围、语言/音色/主题、成片及源码路径、实测时长、实际通过的检查、待补项。只有真实存在的文件可链接；没有音频、没有渲染、没有外部互动时逐项注明。
 
@@ -97,4 +98,4 @@ node "$SKILL_ROOT/scripts/render.mjs" --project "$RUN_DIR"
 
 ## Quality Standard
 
-主要结论可追溯；问题能由事实模型重算；旁白、字幕和读数一致；画面保持官方几何与着色；主题/语言扩展互不改写事实；短句随讲解变化且有可读停留时间、位置在安全区、字幕无裁切、无莫名静音、无未处理浏览器错误；能随机跳帧重现。结构检查和离线模拟不能替代真实云 TTS、试听或观众学习效果证据。
+主要结论可追溯；问题能由事实模型重算；旁白、字幕和读数一致；画面保持官方几何与着色；主题/语言扩展互不改写事实；短句随讲解变化且有可读停留时间、底部字幕位置与字号稳定、字幕无裁切、无莫名静音、无未处理浏览器错误；能随机跳帧重现。结构检查和离线模拟不能替代真实云 TTS、试听或观众学习效果证据。

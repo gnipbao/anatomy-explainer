@@ -1,6 +1,6 @@
 # 旁白适配层
 
-`scripts/tts.py` 使用 Python 3.9+ 标准库；正式运行还需要 `ffmpeg`、`ffprobe`。项目中的 `job.json` 是唯一内容输入。先完成讲稿和场景审核，再设置 `content_ready: true`。以下命令中的项目路径可以是相对路径，脚本会解析为绝对路径。
+`scripts/tts.py` 使用 Python 3.10+ 标准库；正式运行还需要 `ffmpeg`、`ffprobe`。默认影院字幕通过 `subtitle_tools.py` 桥接共享 `subtitles.mjs`，还需要 Node 22+，无需 npm 或 pip 依赖。项目中的 `job.json` 是唯一内容输入。先完成讲稿和场景审核，再设置 `content_ready: true`。以下命令中的项目路径可以是相对路径，脚本会解析为绝对路径。
 
 ```bash
 python3 scripts/tts.py --project /path/to/project --dry-run
@@ -19,6 +19,7 @@ python3 scripts/tts.py --project /path/to/project --force
   "content_ready": true,
   "language": "zh-CN",
   "tts": {"provider": "doubao", "segment_mode": "phrases"},
+  "presentation": {"captions": {"mode": "phrase", "style": "cinema", "placement": "bottom"}},
   "scenes": [
     {"id": "s01", "title": "振动", "narration": "声音来自振动。", "hold_seconds": 0.5}
   ]
@@ -54,7 +55,7 @@ macOS 的受限沙箱可能让 `say` 返回退出码 0、却生成 0 帧 AIFF。
 
 `tts.segment_mode: "phrases"` 适用于 `doubao` 和 `say`。先按标点分出语义短句，中文在同一句内尽量合并为 12–26 字、最多 32 字；短的完整句子可以独立成段。英文按空格和标点切分，保持单词完整。超长单词可超过字符上限。分段只决定合成文本，绝不决定时间长度。
 
-每个短句实际合成后，先检查源音频正时长，再转换 WAV 并由 `ffprobe` 实测。按这些短句音频的真实长度顺序拼成场景，随后追加 `hold_seconds` 对应的真实静音，最后拼接所有场景。短句字幕在该短句音频结束时消失，场景末尾停顿没有残留字幕。分开合成可能改变连续讲述的语调和停连，正式使用前应试听。
+每个短句实际合成后，先检查源音频正时长，再转换 WAV 并由 `ffprobe` 实测。按这些短句音频的真实长度顺序拼成场景，随后追加 `hold_seconds` 对应的真实静音，最后拼接所有场景。原始短句 cue 保留该短句实测音频的开始和结束秒数；影院字幕另按视频帧派生显示边界，并在相邻条目间保留 2 帧间隔，场景末尾停顿没有残留字幕。分开合成可能改变连续讲述的语调和停连，正式使用前应试听。
 
 未设置 `tts.segment_mode` 时继续使用旧版 `scene` 路径，保持既有 job 兼容；也可显式设置 `"scene"`。两种模式均为真实语音实测边界，不是逐词、逐字或强制对齐。
 
@@ -62,8 +63,14 @@ macOS 的受限沙箱可能让 `say` 返回退出码 0、却生成 0 帧 AIFF。
 
 - `audio/<scene-id>.wav`：逐场景音频；`hold_seconds` 是追加到该段末尾的真实静音。
 - `narration-full.wav`：按场景顺序拼接的完整旁白。
-- `narration.srt`：`phrases` 模式每个实测短句一条字幕；`scene` 模式维持每个场景一条字幕，覆盖该场景及末尾停顿。
+- `narration.srt`：`phrases` + 默认 `cinema` 模式使用共享引擎输出规范显示文本、最多两行及帧对齐边界；显式 `kinetic` 使用原短句文本与实测秒数。`scene` 模式维持每个场景一条字幕，覆盖该场景及末尾停顿。
 - `timing.json`：保留 `schema_version: 1`、`provider`、`language`、顶层 `alignment: "scene"`、完整实测 `duration`、`job_fingerprint`，以及 `scenes` 中的 `id/start/end/duration/audio`。`phrases` 模式另加 `captions: {"alignment": "measured-phrases", "cues": [...]}`；每个 cue 含 `id`（如 `s01-p001`）、`scene_id`、绝对秒 `start/end` 和 `text`。cue 按实测短句音频长度对齐，时间不含场景末尾静音。旧场景模式不新增 `captions`。
+
+默认影院字幕与语音分段属于两层：TTS 的 narration 与 `timing.captions` 是原始证据，显示轨规范化和排版不改写它们。中文显示文本中的逗号、句号替换为空格；小数等必要标点保持，语音合成仍读取原稿。显示边界四舍五入到视频帧；为留 2 帧间隔，仅在必要时收短前条结束帧，不平移后条开头，也不凭文字比例伪造词级时间。无法保留正时长又满足间隔时记录 `minimum-gap` 告警，须审核原时轴。读取方式为半开区间 `[start,end)`，烧录按全片显示轨直接切换，无淡入、位移或字号变化。
+
+`project.py build` 在 cinema 模式且有实测或人工 cues 时使用同一引擎刷新 `narration.srt` 和 `cinematic.srt`，并生成 `subtitle-qc.json`；两份 SRT 与烧录共享派生内容和帧边界。中文每行最多 16 个全角等效字符、英文每行最多 42 字符，最多两行，固定字号不自动压缩。可在 `presentation.captions.keep_together` 中提供最多 64 个短术语（每项不超过 100 字符，无控制字符）；保护词过长仍应报告溢出，不能隐藏问题。`line-overflow` error 阻断 build/render；时长建议 5/6–7 秒及中文每秒 9 字／英文每秒 20 字的阅读速度限值产生告警，需要结合旁白审看。这里参考 [Netflix 简中字幕指南](https://partnerhelp.netflixstudios.com/hc/en-us/articles/215986007-Chinese-Simplified-Timed-Text-Style-Guide)；影院预设的字体、安全边距和外观由本项目定义，不自称全平台标准合规。
+
+没有明确 cue 的旧场景音频，表现层只能给出标为 `estimated-phrases` 的推估短句；不能把它报告为实测字幕，或声称旧场景 SRT 与该推估画面已经逐帧一致。显式 `presentation.captions.mode:"scene"` 保留整场字幕兼容；显式 `style:"kinetic"` 才启用旧短句的换位和淡入效果。
 
 每个短句、场景和完整音频都通过 `ffprobe` 测量真实时长，禁止使用字数估算代替。`job_fingerprint` 覆盖语言、TTS 配置、场景 ID、讲稿和停顿，用于检测修改讲稿后误用旧配音。只有整套音频、字幕和时间轴成功后才提交输出，`timing.json` 最后写入；普通失败清理本次暂存，不留下貌似成功的半成品。短句 MP3/WAV 和临时文本仅在暂存目录存在，成功也只发布场景 WAV、完整 WAV、SRT 和 timing，不发布原始响应或短句中间文件。失败的 `--force` 合成保留上一套完整输出，因此修改内容后仍须重新成功合成才可使用。多进程同时写同一项目不受支持；执行期间不要手动编辑输出目录。
 

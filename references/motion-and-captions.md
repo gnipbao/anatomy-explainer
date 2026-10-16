@@ -2,7 +2,7 @@
 
 ## 本轮参考提取
 
-已检查用户提供的120.3秒无人机科普视频：黑底、左侧分章节知识栏、右侧等轴测主体；旋翼/受力/读数与知识点同步变化，底部短句随旁白更换。只提取可迁移机制，不复用原片资产、完整文字或未经核对的数值。用户进一步要求“字幕不要固定”，因此本包还支持字幕在安全位置切换。
+已检查用户提供的120.3秒无人机科普视频：黑底、左侧分章节知识栏、右侧等轴测主体；旋翼/受力/读数与知识点同步变化，底部短句随旁白更换。只提取可迁移机制，不复用原片资产、完整文字或未经核对的数值。后续用户明确要求影视电影形式，默认字幕现改为固定底部的电影式阅读轨；旧换位效果仅保留为显式兼容选项。
 
 ## 每场景最小运动脚本
 
@@ -18,20 +18,20 @@
 
 装配位移应小、层级清楚，给字幕与四角信息留白。主体范围由机制布局控制，微镜头由presentation.mjs控制；避免两层镜头叠加导致裁切。`presentation.reduced_motion=true` 会关闭呈现层镜头、字幕和面板的运动；自定义机制须接收 frame 的 `reducedMotion` 参数，自行选择可读的静态状态，不能假设运行时会冻结插件几何。
 
-## 字幕：短句、真实时间、安全位置
+## 字幕：短句、真实时间、稳定阅读锚点
 
 推荐配置：
 
 ```json
 {
   "tts": {"provider":"doubao", "segment_mode":"phrases"},
-  "presentation": {"captions":{"mode":"phrase", "placement":"auto"}, "zoom":1.04, "focus":[0.5,0.5]}
+  "presentation": {"captions":{"mode":"phrase", "style":"cinema", "placement":"bottom"}, "zoom":1.04, "focus":[0.5,0.5]}
 }
 ```
 
-TTS按语义短句生成音频并实测每句长度，输出 `timing.captions.alignment="measured-phrases"`。字幕一条条出现、平滑进退，在短句边界切换位置；同句阅读期间不游走。默认中文12–26字左右，上限32字；英文不切断词。两行还不够时拆句，不能靠极小字号硬塞。
+TTS按语义短句生成音频并实测每句长度，输出 `timing.captions.alignment="measured-phrases"`。源短句与显示断行分开：电影式字幕固定底部居中、最多两行、白字描边，直接切换，无淡入或位移；中文每行16全角等效字符。超长应审稿，不缩字硬塞。详细时轴、语义保护、SRT一致性与QC见 `subtitles.md`。
 
-支持位置 `auto/bottom/left/right/top`。全局配置是主动覆盖；单场景可用 `scene.presentation.caption_placement` 指定。auto 只选定义好的侧栏或舞台外安全区；不得盖住主机制、标题、来源。可同时配置 scene.presentation.zoom（1–1.12）与focus（0–1归一化坐标）。
+旧 `style:"kinetic"` 才支持 auto/bottom/left/right/top 换位和入退场；默认 cinema 忽略这些旧位置设置。镜头仍可独立配置 scene.presentation.zoom（1–1.12）与focus（0–1归一化坐标），不移动字幕层。
 
 旧完整录音可以保持 `tts.segment_mode="scene"`。没有短句时轴时，运行时会按实测场景区间推估局部短句切点并标记 `estimated-phrases`，须审看后才能作为正式字幕；它不是识别或强制对齐。已人工对齐的时间可通过 `timing.captions.alignment="manual"` 和真实cues提供。只有显式 `presentation.captions.mode="scene"` 才保留整段字幕模式。
 
@@ -47,7 +47,7 @@ TTS按语义短句生成音频并实测每句长度，输出 `timing.captions.al
 ## 验收
 
 - 同场景两个时点可看到因果对象的实际变化。
-- 字幕文字与cue一起更换，停顿时不会残留上一句；进出不影响阅读。
+- 字幕文字与cue一起更换，位置和字号保持稳定，停顿时不会残留上一句；SRT事件与烧录逐帧一致。
 - 随机跳帧后回到同一时刻，部件、文字、读数一致。
 - 渲染器对可见字幕做越界、溢出、标题/来源交叠检查，报告观测到的cue数、位置、alignment。
 - 浅色与黑色各看关键帧和编码成片；暗色不以降低清晰度换取“高级感”。

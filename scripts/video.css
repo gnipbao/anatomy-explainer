@@ -45,3 +45,8 @@ h1{margin:0;font-size:calc(44px * var(--u));font-weight:600;line-height:1.25;let
 #film[data-portrait="true"] #subtitle{border:0;padding:0;align-items:center}
 #film[data-portrait="true"] #source{left:7%;right:7%;bottom:calc(55px * var(--u));font-size:calc(17px * var(--u))}
 #film[data-reduced-motion="true"] #knowledge-rail,#film[data-reduced-motion="true"] #mechanism-camera{will-change:auto}
+
+/* Cinema is a stable full-frame subtitle track, independent of the theme.
+   Explicit line breaks come from the subtitle layout/QC pipeline; never shrink
+   text or wrap it into an unreviewed third line to hide a layout failure. */
+#film[data-caption-style="cinema"] #subtitle{align-items:flex-end;justify-content:center;padding:0;border:0;white-space:pre;text-wrap:nowrap;word-break:normal;overflow-wrap:normal;font-family:Arial,"Noto Sans CJK SC","Microsoft YaHei","PingFang SC",sans-serif;font-weight:400;letter-spacing:0;line-height:1.22;color:#fff;background:transparent;box-shadow:none;-webkit-text-stroke:calc(2px * var(--u)) rgba(0,0,0,.96);paint-order:stroke fill;text-shadow:0 calc(2px * var(--u)) calc(3px * var(--u)) rgba(0,0,0,.75)}

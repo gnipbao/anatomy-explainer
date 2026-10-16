@@ -1,6 +1,6 @@
 # Anatomy 科普视频 Skill
 
-给一个主题，先用 **grill-me / grilling** 分轮审题，锁定受众和核心解释，再交付 **Anatomy 等轴测机制画面 + 旁白 + 短句字幕 + MP4**。默认中文、官方浅色主题、豆包 Seed TTS 2.0；另有官方 dark base 加视频对比度增强的黑色主题，支持自定义视觉主题、科普题材插件、本地多语言语音和其他服务音频导入。
+给一个主题，先用 **grill-me / grilling** 分轮审题，锁定受众和核心解释，再交付 **Anatomy 等轴测机制画面 + 旁白 + 电影式字幕 + MP4**。默认中文、官方浅色主题、豆包 Seed TTS 2.0；另有官方 dark base 加视频对比度增强的黑色主题，支持自定义视觉主题、科普题材插件、本地多语言语音和其他服务音频导入。
 
 这是在 [wheresryan22/anatomy](https://github.com/wheresryan22/anatomy) 之上新建的视频工作流包。官方几何 kit 原样保留，固定版本与文件哈希见 `upstream.lock.json`。不是 Anatomy 官方的视频产品。
 
@@ -34,7 +34,7 @@ python3 scripts/install.py --target "$HOME/.agents/skills/anatomy-explainer"
 
 默认 `job.tts.provider = "doubao"`。在运行环境安全配置 `DOUBAO_API_KEY`；旧控制台使用 `DOUBAO_APP_ID` + `DOUBAO_ACCESS_KEY`。不要把值发给代理或写进项目文件。默认音色 `zh_female_vv_uranus_bigtts` 与资源 `seed-tts-2.0`；其他音色/资源在 job 中显式配置并核对控制台支持。
 
-新建项目和令牌桶样例默认 `tts.segment_mode: "phrases"`：先拆语义短句，每句分别合成、归一化并实测音频长度，再合并为场景音轨。`timing.json` 保存 `captions.alignment: "measured-phrases"` 和每句的实测边界，SRT 每句一条；场景末尾的 `hold_seconds` 不延长字幕。它不是逐词或逐字对齐。旧 job 未写 `segment_mode` 时仍走 `scene` 路径；不要把按字数估算的显示时间称为实测。
+新建项目和令牌桶样例默认 `tts.segment_mode: "phrases"`：先拆语义短句，每句分别合成、归一化并实测音频长度，再合并为场景音轨。`timing.json` 保存 `captions.alignment: "measured-phrases"` 和每句的实测边界，电影式 SRT 每句一条，按帧对齐并为连续句保留两帧间隔；场景末尾的 `hold_seconds` 不延长字幕。它不是逐词或逐字对齐。旧 job 未写 `segment_mode` 时仍走 `scene` 路径；不要把按字数估算的显示时间称为实测。
 
 `language` 不是翻译器。最终讲稿、字幕和问题应先写成目标语言；非中文豆包必须显式给出支持该语言的 voice。本地 `say` 从已安装语音中按语言匹配，可指定 voice。外部服务把每场景的真实音频放入 `audio-input/`，并使用 `tts.segment_mode: "scene"`；`external` 不支持自动实测短句边界。完整说明见 `references/tts.md`。
 
@@ -68,15 +68,17 @@ node scripts/render.mjs --project /tmp/anatomy-demo
 
 ## 画面布局与机制动作
 
-横屏采用左侧知识栏、右侧机制主舞台：知识栏显示章节、标题与场景知识点，短句字幕独立显示。默认 `presentation.captions: {"mode":"phrase","placement":"auto"}`，字幕在预设安全区随 cue 切换，可全局或逐场景指定位置；竖屏改为上方知识区与下方机制区。自动布局仍需逐场景检查遮挡和裁切。
+横屏采用左侧知识栏、右侧机制主舞台：知识栏显示章节、标题与场景知识点，短句字幕独立显示。默认 `presentation.captions: {"mode":"phrase","style":"cinema","placement":"bottom"}`：全画幅底部居中，白色无衬线字配黑描边，透明背景；最多两行、固定字号、共同底线，直接切换。中文字幕按16全角等效字符/行处理，中文逗号与句号仅在显示中改为空格。字幕不跟随模型移动，也不做淡入、飞入或缩放。更多规则和来源见 `references/subtitles.md`。旧换位字幕仅在显式 `style:"kinetic"` 时使用；竖屏仍需审看安全区。
 
 机制由 `mount` 返回的 `frame({scene, progress, time, setReadout})` 根据本次绝对时间和场景进度重算。部件位移、轮转、传力或因果状态变化应由机制代码实现，镜头轻推和知识栏入场只负责呈现。运行时不会替自定义机制生成动作；验收应包括阶段差异、倒放和随机 seek 后的状态复现。
 
 ## 产物与验证范围
 
-运行项目保存 brief、研究、讲稿、场景参数、机制代码、逐场景/完整 WAV、SRT、实测时轴、HTML 预览、H.264/AAC MP4 与渲染报告。短句模式的 SRT 使用实测短句边界，旧场景模式仍为每场景一条；两者都不是字级识别。帧按照绝对时间重算，真实音频长度驱动场景。
+运行项目保存 brief、研究、讲稿、场景参数、机制代码、逐场景/完整 WAV、SRT、实测时轴、HTML 预览、H.264/AAC MP4 与渲染报告。短句模式的原始时间保留在 timing.json；电影式 SRT 与烧录字幕共同使用帧对齐后的显示时间、断行和文案，旧场景模式仍为每场景一条；两者都不是字级识别。帧按照绝对时间重算，真实音频长度驱动场景。
 
 v0.2 已有同内容双主题样片的验证记录：1920×1080、24 fps、1551 帧、64.625 秒、17 条实测短句。增强对比度后的黑色版本也已完成关键帧审看与完整重渲染。每次主题调整仍需用对应的新截图、MP4 和渲染报告复核。运行视频和用户参考资料不随源码发布。
+
+构建输出 `cinematic.srt`、同内容的 `narration.srt` 与 `subtitle-qc.json`；两行放不下会阻断，显示时长和阅读速度超出预设会记录告警，不自动压小字号或杜撰新切点。
 
 本包检查包含上游哈希、项目与主题合约、模型算术、豆包流解析、音频归一化和渲染边界。真实验证与未验证项见 `references/sources.md`。测试通过不证明科学结论或观众学习效果，也不代表云端账户已配置。
 
