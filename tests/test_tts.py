@@ -36,6 +36,26 @@ def test_tone(path, seconds=0.1):
         output.writeframes(struct.pack("<h", 1000) * round(seconds * 24000))
 
 
+def wav_bytes(seconds=0.1):
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(24000)
+        audio.writeframes(struct.pack("<h", 1000) * round(seconds * 24000))
+    return output.getvalue()
+
+
+class LocalResponse(io.BytesIO):
+    def __init__(self, audio, headers=None, status=200):
+        super().__init__(audio)
+        self.headers = {"Content-Type": "audio/wav", "Content-Length": str(len(audio))} if headers is None else headers
+        self.status = status
+
+    def getcode(self):
+        return self.status
+
+
 class StreamTests(unittest.TestCase):
     def test_complete_audio_and_metadata_frames(self):
         chunks = [b"\n", frame(0, base64.b64encode(b"part1").decode()), frame(0, sentence={"text": "声音"}),
@@ -153,8 +173,197 @@ class ValidationTests(unittest.TestCase):
             self.assertNotIn("sensitive-private-path", error.getvalue())
 
 
+class LocalAdapterTests(unittest.TestCase):
+    def test_only_explicit_loopback_endpoint_is_accepted(self):
+        for endpoint in (tts.LOCAL_ENDPOINT, "http://localhost:3931/v1/audio/speech", "http://[::1]:3931/v1/audio/speech"):
+            document = job("local")
+            document["tts"]["endpoint"] = endpoint
+            self.assertIs(tts.validate_job(document), document)
+        for endpoint in ("https://127.0.0.1:3931/v1/audio/speech", "http://example.com/v1/audio/speech",
+                         "http://127.1:3931/v1/audio/speech", "http://2130706433:3931/v1/audio/speech",
+                         "http://127.0.0.2:3931/v1/audio/speech", "http://localhost.evil/v1/audio/speech",
+                         "http://user@127.0.0.1/v1/audio/speech", "http://localhost/v1/audio/speech?x=1",
+                         "http://localhost/v1/audio/speech?", "http://localhost/v1/audio/speech#",
+                         "http://localhost:0/v1/audio/speech", "http://localhost:99999/v1/audio/speech",
+                         "http://localhost/other", "http://localhost/v1/audio/speech/",
+                         "http://local\nhost/v1/audio/speech", "file:///v1/audio/speech", None):
+            document = job("local")
+            document["tts"]["endpoint"] = endpoint
+            with self.subTest(endpoint=endpoint), self.assertRaisesRegex(tts.TTSError, "loopback"):
+                tts.validate_job(document)
+
+    def test_local_timeout_is_bounded_and_bool_is_rejected(self):
+        for value in (29, 3601, True, "600", float("inf"), float("nan"), None):
+            document = job("local")
+            document["tts"]["timeout_seconds"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(tts.TTSError, "timeout_seconds"):
+                tts.validate_job(document)
+        for value in (30, 600, 3600):
+            self.assertEqual(tts.local_timeout({"timeout_seconds": value}), value)
+
+    def test_local_voice_is_validated_separately_from_cloud_voice(self):
+        for value in (None, "", "   ", True, 4, "x" * 201, "name\nsecond-line", "name\t", "name\x7f"):
+            document = job("local")
+            document["tts"]["local_voice"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(tts.TTSError, "local_voice"):
+                tts.validate_job(document)
+        document = job("doubao")
+        document["tts"]["voice"] = tts.DEFAULT_VOICE
+        document["tts"]["local_voice"] = "narrator"
+        self.assertIs(tts.validate_job(document), document)
+
+    def test_switching_only_provider_preserves_cloud_voice_and_sends_local_default(self):
+        document = job("doubao")
+        document["tts"]["voice"] = tts.DEFAULT_VOICE
+        document["tts"]["provider"] = "local"
+        tts.validate_job(document)
+        config = tts.dry_run_config(Path("/unused"), document)
+        self.assertEqual(config["voice"], "default")
+        for local_voice in (None, "narrator"):
+            opener = mock.Mock()
+            opener.open.return_value = LocalResponse(wav_bytes())
+            if local_voice is not None:
+                document["tts"]["local_voice"] = local_voice
+            with self.subTest(local_voice=local_voice), tempfile.TemporaryDirectory() as temporary, mock.patch.object(tts.urllib.request, "build_opener", return_value=opener):
+                tts.synthesize_local(document["scenes"][0], document["tts"], Path(temporary) / "result.wav", document["language"])
+            self.assertEqual(json.loads(opener.open.call_args.args[0].data)["voice"], local_voice or "default")
+        self.assertEqual(document["tts"]["voice"], tts.DEFAULT_VOICE)
+        document["tts"]["provider"] = "doubao"
+        self.assertEqual(tts.dry_run_config(Path("/unused"), document)["voice"], tts.DEFAULT_VOICE)
+
+    def test_local_request_is_openai_compatible_and_disables_proxy_and_redirect(self):
+        content = wav_bytes()
+        opener = mock.Mock()
+        opener.open.return_value = LocalResponse(content)
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(tts.urllib.request, "build_opener", return_value=opener) as build:
+            destination = Path(temporary) / "result.wav"
+            tts.synthesize_local(job("local")["scenes"][0], {"timeout_seconds": 900}, destination, "zh-CN")
+            self.assertEqual(destination.read_bytes(), content)
+        request = opener.open.call_args.args[0]
+        self.assertEqual(request.full_url, tts.LOCAL_ENDPOINT)
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(json.loads(request.data), {"model": "voxcpm2", "input": "声音来自振动。", "voice": "default", "response_format": "wav", "language": "zh-CN"})
+        self.assertEqual(opener.open.call_args.kwargs["timeout"], 900)
+        self.assertNotIn("Authorization", request.headers)
+        handlers = build.call_args.args
+        self.assertTrue(any(isinstance(handler, tts.urllib.request.ProxyHandler) and handler.proxies == {} for handler in handlers))
+        redirect = next(handler for handler in handlers if isinstance(handler, tts.NoRedirect))
+        self.assertIsNone(redirect.redirect_request(request, None, 302, "Moved", {}, "http://example.com/"))
+
+    def test_local_dry_run_does_not_contact_service_or_read_credentials(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            (project / "job.json").write_text(json.dumps(job("local")), encoding="utf-8")
+            output = io.StringIO()
+            with mock.patch.object(tts.urllib.request, "build_opener", side_effect=AssertionError("network")), mock.patch.object(tts, "build_auth_headers", side_effect=AssertionError("credentials")), redirect_stdout(output):
+                self.assertEqual(tts.main(["--project", str(project), "--dry-run"]), 0)
+            config = json.loads(output.getvalue())
+            self.assertEqual(config["endpoint"], tts.LOCAL_ENDPOINT)
+            self.assertEqual(config["voice"], "default")
+            self.assertEqual(config["service_status"], "not inspected; required only for synthesis")
+            self.assertIsNone(config["duration"])
+            self.assertEqual(list(project.iterdir()), [project / "job.json"])
+
+    def test_remote_endpoint_is_rejected_before_any_connection(self):
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(tts.urllib.request, "build_opener", side_effect=AssertionError("network")):
+            destination = Path(temporary) / "result.wav"
+            with self.assertRaisesRegex(tts.TTSError, "loopback"):
+                tts.synthesize_local(job("local")["scenes"][0], {"endpoint": "http://example.com/v1/audio/speech"}, destination, "zh-CN")
+            self.assertFalse(destination.exists())
+
+    def test_local_response_rejects_json_empty_truncated_and_wrong_length_audio(self):
+        content = wav_bytes()
+        cases = [(b'{"error":"private-narration"}', {"Content-Type": "application/json"}),
+                 (b"", {"Content-Type": "audio/wav"}),
+                 (wav_bytes(0), None), (content[:-2], None),
+                 (content, {"Content-Type": "audio/wav", "Content-Length": str(len(content) + 10)}),
+                 (content, {"Content-Type": "audio/wav", "Content-Length": "-1"}),
+                 (content, {"Content-Type": "audio/wav", "Content-Length": str(tts.MAX_LOCAL_AUDIO_BYTES + 1)})]
+        for audio, headers in cases:
+            with self.subTest(size=len(audio), headers=headers), tempfile.TemporaryDirectory() as temporary:
+                destination = Path(temporary) / "result.wav"
+                opener = mock.Mock()
+                opener.open.return_value = LocalResponse(audio, headers)
+                with mock.patch.object(tts.urllib.request, "build_opener", return_value=opener), self.assertRaises(tts.TTSError) as caught:
+                    tts.synthesize_local(job("local")["scenes"][0], {}, destination, "zh-CN")
+                self.assertNotIn("private-narration", str(caught.exception))
+                self.assertFalse(destination.exists())
+
+    def test_local_stream_size_is_bounded_without_content_length(self):
+        opener = mock.Mock()
+        opener.open.return_value = LocalResponse(b"a" * 65, {"Content-Type": "audio/wav"})
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(tts, "MAX_LOCAL_AUDIO_BYTES", 64), mock.patch.object(tts.urllib.request, "build_opener", return_value=opener):
+            destination = Path(temporary) / "result.wav"
+            with self.assertRaisesRegex(tts.TTSError, "size limit"):
+                tts.synthesize_local(job("local")["scenes"][0], {}, destination, "zh-CN")
+            self.assertFalse(destination.exists())
+
+    def test_http_errors_are_safe_and_model_missing_is_actionable(self):
+        for status in (302, 400, 500, 503):
+            opener = mock.Mock()
+            opener.open.side_effect = tts.urllib.error.HTTPError(tts.LOCAL_ENDPOINT, status, "sensitive-remote-message", {}, io.BytesIO(b"private-narration"))
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temporary, mock.patch.object(tts.urllib.request, "build_opener", return_value=opener):
+                destination = Path(temporary) / "result.wav"
+                with self.assertRaises(tts.TTSError) as caught:
+                    tts.synthesize_local(job("local")["scenes"][0], {}, destination, "zh-CN")
+                message = str(caught.exception)
+                self.assertIn(str(status), message)
+                self.assertIn("doctor", message)
+                self.assertNotIn("private-narration", message)
+                self.assertNotIn("sensitive-remote-message", message)
+                if status == 503:
+                    self.assertIn("model path", message)
+                self.assertFalse(destination.exists())
+
+    def test_connection_failure_never_exposes_private_details(self):
+        opener = mock.Mock()
+        opener.open.side_effect = tts.urllib.error.URLError("private-connection-details")
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(tts.urllib.request, "build_opener", return_value=opener):
+            with self.assertRaisesRegex(tts.TTSError, "connection failed") as caught:
+                tts.synthesize_local(job("local")["scenes"][0], {}, Path(temporary) / "out.wav", "en-US")
+            self.assertNotIn("private-connection-details", str(caught.exception))
+
+
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
 class AudioIntegrationTests(unittest.TestCase):
+    def test_local_full_scene_and_phrase_paths_keep_measured_audio_and_atomic_outputs(self):
+        for segment_mode in ("scene", "phrases"):
+            with self.subTest(segment_mode=segment_mode), tempfile.TemporaryDirectory() as temporary:
+                project = Path(temporary)
+                document = job("local")
+                document["tts"]["segment_mode"] = segment_mode
+                document["presentation"] = {"captions": {"style": "kinetic"}}
+                document["scenes"][0]["narration"] = "声音来自振动。振动推动空气。"
+                requested = []
+                opener = mock.Mock()
+
+                def local_open(request, timeout):
+                    requested.append(json.loads(request.data))
+                    return LocalResponse(wav_bytes(0.1 * len(requested)))
+
+                opener.open.side_effect = local_open
+                with mock.patch.object(tts.urllib.request, "build_opener", return_value=opener):
+                    timing = tts.execute(project, document)
+                self.assertEqual(timing["provider"], "local")
+                self.assertEqual(set(path.name for path in project.iterdir()), set(tts.OUTPUTS))
+                self.assertTrue(all(payload["language"] == "zh-CN" for payload in requested))
+                if segment_mode == "scene":
+                    self.assertEqual([payload["input"] for payload in requested], [document["scenes"][0]["narration"]])
+                    self.assertNotIn("captions", timing)
+                    self.assertAlmostEqual(timing["duration"], 0.25, delta=0.001)
+                else:
+                    self.assertEqual([payload["input"] for payload in requested], ["声音来自振动。", "振动推动空气。"])
+                    self.assertEqual(timing["captions"]["alignment"], "measured-phrases")
+                    self.assertEqual([(cue["start"], cue["end"]) for cue in timing["captions"]["cues"]], [(0.0, 0.1), (0.1, 0.3)])
+                    self.assertAlmostEqual(timing["duration"], 0.45, delta=0.001)
+                previous = {str(path.relative_to(project)): path.read_bytes() for path in project.rglob("*") if path.is_file()}
+                opener.open.side_effect = lambda request, timeout: LocalResponse(wav_bytes()[:-2])
+                with mock.patch.object(tts.urllib.request, "build_opener", return_value=opener), self.assertRaises(tts.TTSError):
+                    tts.execute(project, document, force=True)
+                actual = {str(path.relative_to(project)): path.read_bytes() for path in project.rglob("*") if path.is_file()}
+                self.assertEqual(actual, previous)
+                self.assertFalse(list(project.glob(".tts-stage-*")))
+
     def test_unspecified_segment_mode_keeps_scene_synthesis(self):
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)

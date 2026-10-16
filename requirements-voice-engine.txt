@@ -1,0 +1,4 @@
+# Optional isolated Apple Silicon environment; never install into system Python.
+mlx-audio==0.5.9
+mlx==0.31.1
+soundfile==0.13.1

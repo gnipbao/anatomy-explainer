@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "host": "127.0.0.1",
+  "port": 3931,
+  "backend": "voxcpm2_mlx",
+  "python_path": "~/.local/share/anatomy-voice-engine/.venv/bin/python",
+  "model_path": "~/Models/AnatomyVoice/VoxCPM2-8bit",
+  "voice": {
+    "id": "default",
+    "language": "zh-CN",
+    "instruct": "An adult female narrator, warm and clear, natural educational storytelling, moderate pace, restrained expression."
+  },
+  "voices": {},
+  "generation": {
+    "seed": 42,
+    "cfg_value": 2.0,
+    "inference_timesteps": 10,
+    "max_tokens": 2000
+  },
+  "timeout_seconds": 1800
+}

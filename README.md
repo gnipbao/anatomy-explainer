@@ -1,6 +1,6 @@
 # Anatomy 科普视频 Skill
 
-给一个主题，先用 **grill-me / grilling** 分轮审题，锁定受众和核心解释，再交付 **Anatomy 等轴测机制画面 + 旁白 + 电影式字幕 + MP4**。默认中文、官方浅色主题、豆包 Seed TTS 2.0；另有官方 dark base 加视频对比度增强的黑色主题，支持自定义视觉主题、科普题材插件、本地多语言语音和其他服务音频导入。
+给一个主题，先用 **grill-me / grilling** 分轮审题，锁定受众和核心解释，再交付 **Anatomy 等轴测机制画面 + 旁白 + 电影式字幕 + MP4**。默认中文、官方浅色主题、豆包 Seed TTS 2.0；另有官方 dark base 加视频对比度增强的黑色主题，支持自定义视觉主题、科普题材插件、可独立运行的 VoxCPM2 本地配音引擎和其他服务音频导入。
 
 这是在 [wheresryan22/anatomy](https://github.com/wheresryan22/anatomy) 之上新建的视频工作流包。官方几何 kit 原样保留，固定版本与文件哈希见 `upstream.lock.json`。不是 Anatomy 官方的视频产品。
 
@@ -16,7 +16,7 @@
 
 ## 环境与安装
 
-Python 3.10+、Node 22+、Chrome/Chromium、FFmpeg 和 ffprobe；基础流程不需要 npm/pip 包。macOS `say` 是可选本地配音后端，Windows/Linux 可使用豆包或导入真实音频。工具未装时不自动修改机器环境。
+Python 3.10+、Node 22+、Chrome/Chromium、FFmpeg 和 ffprobe；基础流程不需要 npm/pip 包。可选的 VoxCPM2 本地引擎使用 Apple Silicon Mac 和独立 MLX 环境；macOS `say` 提供系统语音，Windows/Linux 可使用豆包或导入真实音频。工具未装时不自动修改机器环境。
 
 克隆仓库后验证并安装：
 
@@ -37,6 +37,26 @@ python3 scripts/install.py --target "$HOME/.agents/skills/anatomy-explainer"
 新建项目和令牌桶样例默认 `tts.segment_mode: "phrases"`：先拆语义短句，每句分别合成、归一化并实测音频长度，再合并为场景音轨。`timing.json` 保存 `captions.alignment: "measured-phrases"` 和每句的实测边界，电影式 SRT 每句一条，按帧对齐并为连续句保留两帧间隔；场景末尾的 `hold_seconds` 不延长字幕。它不是逐词或逐字对齐。旧 job 未写 `segment_mode` 时仍走 `scene` 路径；不要把按字数估算的显示时间称为实测。
 
 `language` 不是翻译器。最终讲稿、字幕和问题应先写成目标语言；非中文豆包必须显式给出支持该语言的 voice。本地 `say` 从已安装语音中按语言匹配，可指定 voice。外部服务把每场景的真实音频放入 `audio-input/`，并使用 `tts.segment_mode: "scene"`；`external` 不支持自动实测短句边界。完整说明见 `references/tts.md`。
+
+### 独立本地引擎：VoxCPM2
+
+服务与 Skill 分开安装，模型文件与参考音色留在本机。新项目继续默认豆包；本地服务就绪后，只改 `tts.provider` 为 `"local"`，原音色和资源配置可保留，字幕与渲染命令照常使用。本地音色 ID 用 `tts.local_voice`，默认 `"default"`，不会误用豆包的 `tts.voice`。
+
+在包目录准备独立 Python 3.12 环境和四份模型 JSON（需要 `uv`；命令不会下载主权重）：
+
+```bash
+python3 scripts/setup_voice_engine.py --install-deps --prepare-metadata
+```
+
+手动下载 [model.safetensors（约 3.22 GB）](https://huggingface.co/mlx-community/VoxCPM2-8bit/resolve/d52725898a0675703f7f9ddc5a4d1a3cdbb99032/model.safetensors?download=true)，保持文件名放入 `~/Models/AnatomyVoice/VoxCPM2-8bit/`，然后：
+
+```bash
+python3 scripts/check_voice_model.py
+python3 "$HOME/.local/share/anatomy-voice-engine/app/voice_engine.py" doctor
+python3 "$HOME/.local/share/anatomy-voice-engine/app/voice_engine.py" serve
+```
+
+默认接口 `http://127.0.0.1:3931/v1/audio/speech`，只监听本机；缺模型返回明确错误，不回退云端。当前后端限定 Apple Silicon MLX，每次请求重新加载模型；依赖与接口检查不代表真实合成和听感已通过。独立 CLI 也能生成完整旁白，但没有转写或字幕时间戳，须另行对齐。配置、音色参考、后端扩展与验证边界见 [本地配音引擎](references/local-voice-engine.md)。
 
 ## 跑通完整样例
 

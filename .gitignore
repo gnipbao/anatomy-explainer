@@ -18,3 +18,8 @@ venv/
 *.log
 *.tmp
 *.part
+*.safetensors
+*.pth
+*.gguf
+*.onnx
+voice-outputs/

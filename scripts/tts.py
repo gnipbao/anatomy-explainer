@@ -9,7 +9,9 @@ import argparse
 import base64
 import binascii
 import hashlib
+import http.client
 import importlib.util
+import io
 import json
 import math
 import os
@@ -20,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import wave
@@ -27,6 +30,9 @@ import wave
 ENDPOINT = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
 DEFAULT_VOICE = "zh_female_vv_uranus_bigtts"
 DEFAULT_RESOURCE = "seed-tts-2.0"
+LOCAL_ENDPOINT = "http://127.0.0.1:3931/v1/audio/speech"
+LOCAL_TIMEOUT = 600
+MAX_LOCAL_AUDIO_BYTES = 128 * 1024 * 1024
 OUTPUTS = ("audio", "narration-full.wav", "narration.srt", "timing.json")
 ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 LANG_RE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\Z")
@@ -45,6 +51,33 @@ class TTSError(Exception):
     """A deliberately safe, user-visible diagnostic (no raw remote errors)."""
 
 
+def local_endpoint(tts):
+    """Keep narration on an explicitly selected loopback HTTP service."""
+    endpoint = tts.get("endpoint", LOCAL_ENDPOINT)
+    if (not isinstance(endpoint, str) or not endpoint or len(endpoint) > 2048
+            or any(ord(c) <= 32 or ord(c) == 127 for c in endpoint)
+            or "?" in endpoint or "#" in endpoint):
+        raise TTSError("tts.endpoint must be a loopback HTTP /v1/audio/speech URL without credentials, query, or fragment")
+    try:
+        parsed = urllib.parse.urlsplit(endpoint)
+        port = parsed.port
+        if (parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost", "::1")
+                or parsed.username is not None or parsed.password is not None
+                or parsed.path != "/v1/audio/speech" or parsed.query or parsed.fragment
+                or (port is not None and not 1 <= port <= 65535)):
+            raise ValueError()
+    except (ValueError, UnicodeError):
+        raise TTSError("tts.endpoint must be a loopback HTTP /v1/audio/speech URL without credentials, query, or fragment") from None
+    return endpoint
+
+
+def local_timeout(tts):
+    timeout = tts.get("timeout_seconds", LOCAL_TIMEOUT)
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 30 <= timeout <= 3600:
+        raise TTSError("tts.timeout_seconds must be a finite number between 30 and 3600")
+    return timeout
+
+
 def validate_job(job):
     if not isinstance(job, dict) or type(job.get("schema_version")) is not int or job["schema_version"] != 1:
         raise TTSError("job.json requires schema_version: 1")
@@ -57,8 +90,15 @@ def validate_job(job):
     if not isinstance(tts, dict):
         raise TTSError("tts must be an object")
     provider = tts.get("provider", "doubao")
-    if provider not in ("doubao", "say", "external"):
-        raise TTSError("tts.provider must be doubao, say, or external")
+    if provider not in ("doubao", "local", "say", "external"):
+        raise TTSError("tts.provider must be doubao, local, say, or external")
+    if provider == "local":
+        local_endpoint(tts)
+        local_timeout(tts)
+        local_voice = tts.get("local_voice", "default")
+        if (not isinstance(local_voice, str) or not local_voice.strip()
+                or len(local_voice) > 200 or any(ord(c) < 32 or ord(c) == 127 for c in local_voice)):
+            raise TTSError("tts.local_voice must be a nonempty, single-line local voice name")
     segment_mode = tts.get("segment_mode", "scene")
     if segment_mode not in ("scene", "phrases"):
         raise TTSError("tts.segment_mode must be scene or phrases")
@@ -115,6 +155,10 @@ def dry_run_config(project, job):
                       resource_id=tts.get("resource_id", DEFAULT_RESOURCE),
                       credential_status="not inspected; required only for synthesis",
                       credential_env_names=["DOUBAO_API_KEY", "DOUBAO_APP_ID", "DOUBAO_ACCESS_KEY"])
+    elif provider == "local":
+        result.update(endpoint=local_endpoint(tts), voice=tts.get("local_voice", "default"), model="voxcpm2",
+                      timeout_seconds=local_timeout(tts),
+                      service_status="not inspected; required only for synthesis")
     return result
 
 
@@ -177,6 +221,73 @@ def parse_ndjson(lines):
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None  # Never forward a credential-bearing request to another URL.
+
+
+def validate_local_wav(audio):
+    """A success response must contain complete, nonempty uncompressed WAV audio."""
+    try:
+        with wave.open(io.BytesIO(audio), "rb") as source:
+            channels, width, rate, frames, compression, _ = source.getparams()
+            if (compression != "NONE" or not 1 <= channels <= 8 or width not in (1, 2, 3, 4)
+                    or not 8000 <= rate <= 192000 or frames <= 0
+                    or frames * channels * width > MAX_LOCAL_AUDIO_BYTES):
+                raise ValueError()
+            expected = frames * channels * width
+            actual = 0
+            while True:
+                chunk = source.readframes(65536)
+                if not chunk:
+                    break
+                actual += len(chunk)
+            if actual != expected:
+                raise ValueError()
+    except (wave.Error, EOFError, ValueError, OverflowError):
+        raise TTSError("Local TTS returned empty, incomplete, or unsupported WAV audio; run the local service doctor") from None
+
+
+def synthesize_local(scene, tts, destination, language):
+    """OpenAI-compatible loopback speech endpoint; no proxy, redirects, or raw errors."""
+    payload = {"model": "voxcpm2", "input": scene["narration"],
+               "voice": tts.get("local_voice", "default"), "response_format": "wav", "language": language}
+    request = urllib.request.Request(local_endpoint(tts), data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                                     headers={"Content-Type": "application/json", "Accept": "audio/wav"}, method="POST")
+    try:
+        # Explicitly disable environment proxies so local narration cannot be routed elsewhere.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        with opener.open(request, timeout=local_timeout(tts)) as response:
+            if response.getcode() != 200:
+                raise TTSError("Local TTS did not return success; run the local service doctor")
+            content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+            if content_type not in ("audio/wav", "audio/x-wav", "audio/wave", "application/octet-stream"):
+                raise TTSError("Local TTS returned a non-audio response; run the local service doctor")
+            declared = response.headers.get("Content-Length")
+            if declared is not None:
+                try:
+                    declared = int(declared)
+                    if not 0 < declared <= MAX_LOCAL_AUDIO_BYTES:
+                        raise ValueError()
+                except (TypeError, ValueError):
+                    raise TTSError("Local TTS audio has an invalid or oversized content length") from None
+            audio = bytearray()
+            while True:
+                chunk = response.read(min(65536, MAX_LOCAL_AUDIO_BYTES + 1 - len(audio)))
+                if not chunk:
+                    break
+                audio.extend(chunk)
+                if len(audio) > MAX_LOCAL_AUDIO_BYTES:
+                    raise TTSError("Local TTS audio exceeds the per-utterance size limit")
+            if declared is not None and len(audio) != declared:
+                raise TTSError("Local TTS response ended before its complete audio; partial audio discarded")
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        exc.close()
+        if status == 503:
+            raise TTSError("Local TTS service is not ready (status 503); run the local service doctor and check its model path") from None
+        raise TTSError("Local TTS HTTP request failed (status %d); run the local service doctor; response details withheld" % status) from None
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError, http.client.HTTPException):
+        raise TTSError("Local TTS connection failed; start the configured local service and run its doctor; connection details withheld") from None
+    validate_local_wav(bytes(audio))
+    destination.write_bytes(audio)
 
 
 def synthesize_doubao(scene, tts, destination):
@@ -259,11 +370,14 @@ def normalize(source, destination, hold):
     run_command(command, "Normalizing scene audio")
 
 
-def synthesize_source(scene, tts, provider, say_voice, workspace, stem):
+def synthesize_source(scene, tts, provider, say_voice, workspace, stem, language=None):
     """Synthesize one real utterance and reject empty audio before any padding."""
     if provider == "doubao":
         source = workspace / (stem + ".mp3")
         synthesize_doubao(scene, tts, source)
+    elif provider == "local":
+        source = workspace / (stem + "-source.wav")
+        synthesize_local(scene, tts, source, language)
     else:
         text_file = workspace / (stem + ".txt")
         text_file.write_text(scene["narration"], encoding="utf-8")
@@ -377,7 +491,7 @@ def execute(project, job, force=False):
                 for phrase_index, phrase in enumerate(split_phrases(scene["narration"], job["language"]), 1):
                     phrase_id = sid + "-p%03d" % phrase_index
                     utterance = dict(scene, narration=phrase)
-                    source = synthesize_source(utterance, tts, provider, say_voice, phrase_directory, phrase_id)
+                    source = synthesize_source(utterance, tts, provider, say_voice, phrase_directory, phrase_id, job["language"])
                     phrase_path = phrase_directory / (phrase_id + ".wav")
                     normalize(source, phrase_path, 0)
                     phrase_duration = probe_duration(phrase_path)
@@ -392,8 +506,8 @@ def execute(project, job, force=False):
                 source = phrase_directory / "scene-unpadded.wav"
                 concatenate_wav(phrase_paths, source)
                 require_source_audio(source, provider)
-            elif provider in ("doubao", "say"):
-                source = synthesize_source(scene, tts, provider, say_voice, stage, sid)
+            elif provider in ("doubao", "local", "say"):
+                source = synthesize_source(scene, tts, provider, say_voice, stage, sid, job["language"])
             else:
                 source = external[sid]
                 require_source_audio(source, provider)

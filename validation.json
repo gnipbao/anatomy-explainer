@@ -3,7 +3,7 @@
   "checked_on": "2026-10-16",
   "evidence_level": "E3-executed-tested-environment",
   "upstream_integrity_files": 38,
-  "python_tests_passed": 48,
+  "python_tests_passed": 113,
   "node_tests_passed": 54,
   "skill_quality_check": "passed",
   "install_dry_run_and_temporary_copy": "passed",
@@ -30,7 +30,10 @@
     "full upstream geometry audit",
     "complete human listening review",
     "audience learning outcomes",
-    "cross-topic success rate"
+    "cross-topic success rate",
+    "VoxCPM2 weight loading and actual synthesis",
+    "VoxCPM2 narration completeness and listening quality",
+    "VoxCPM2 multilingual pronunciation, runtime memory and speed"
   ],
   "cloud_doubao_evidence": {
     "checked_on": "2026-10-15",
@@ -81,7 +84,7 @@
     "srt_matches_render_track": true,
     "independent_frame_comparison_per_theme": 1551
   },
-  "version": "0.3.0",
+  "version": "0.4.0",
   "preserved_baseline": {
     "version": "0.1.0",
     "offline_tests": 30,
@@ -168,11 +171,46 @@
     "media_or_credentials_in_repository": false
   },
   "public_release_checks": {
+    "version": "0.4.0",
+    "offline_tests_passed": 167,
+    "python": 113,
+    "node": 54,
+    "loopback_http_skips": 0,
+    "upstream_hashes": 38,
+    "private_paths_or_credentials_in_new_public_files": false,
+    "weights_or_private_reference_audio_bundled": false
+  },
+  "public_release_checks_v030": {
     "version": "0.3.0",
     "offline_tests_passed": 102,
     "installer_git_and_environment_exclusion_regression": "passed",
     "upstream_hashes": 38,
     "private_paths_or_uuid_like_values": 0,
     "media_or_credentials_in_repository": false
+  },
+  "local_voice_engine": {
+    "version": "0.4.0",
+    "backend": "voxcpm2_mlx",
+    "platform_scope": "native Apple Silicon macOS",
+    "runtime_isolated": true,
+    "python": "3.12.11",
+    "mlx_audio": "0.5.9",
+    "mlx": "0.31.1",
+    "soundfile": "0.13.1",
+    "actual_environment_dependencies_and_api_check": "passed",
+    "actual_standalone_config_preserves_venv_interpreter": "passed",
+    "pinned_model_metadata_files_verified": 4,
+    "weight_downloaded": false,
+    "missing_file": "model.safetensors",
+    "actual_model_synthesis_passed": false,
+    "actual_http_health": "blocked/model_missing",
+    "actual_http_missing_model_speech_status": 503,
+    "probe_service_stopped_after_validation": true,
+    "adapter_http_ffmpeg_integration": "passed with explicitly labelled fixture PCM, no model speech",
+    "model_sha_checker_flat_installed_layout": "passed",
+    "cloud_voice_preserved_on_provider_switch": "passed",
+    "automatic_fallback": false,
+    "continuous_cli_alignment": "alignment_pending",
+    "review": "nonblind second-agent code review; two installation defects fixed and regression tested"
   }
 }

@@ -1,6 +1,6 @@
 # 项目文件与运行合约
 
-包内脚本使用 Python 3.10+、Node 22+、FFmpeg/ffprobe、Chrome/Chromium。无 npm 或 pip 依赖；macOS `say` 为可选本地配音，不是跨平台必备。
+基础脚本使用 Python 3.10+、Node 22+、FFmpeg/ffprobe、Chrome/Chromium，无 npm 或 pip 依赖。`local` 配音的 VoxCPM2 后端另用 Apple Silicon Mac 和独立 Python 3.12 / MLX 环境，见 `local-voice-engine.md`；macOS `say` 也是可选后端。
 
 ## 最小 job.json
 
@@ -10,7 +10,7 @@
 - `theme` 默认 `anatomy-official-light`，可选内置黑色 `anatomy-official-dark`；`topic_pack` 默认 `general-science`。一次构建使用一个主题，两套交付需分别构建和渲染。
 - `content_ready: true` 表示代理完成研究、脚本和模型；初始化草稿为 false。
 - `video: {width,height,fps}`：偶数尺寸 240–3840、整数帧率 1–60；新主题初始化为 1920×1080/30fps，令牌桶示例为 1280×720/24fps。木牛流马双主题验证采用 1920×1080/24fps，不改变初始化默认值。
-- `tts: {provider,segment_mode?,voice?,resource_id?}`；provider 为 doubao/say/external。新项目与示例默认 `segment_mode: "phrases"`，逐短句合成和测长；旧 job 省略此字段仍走场景音频兼容路径。
+- `tts: {provider,segment_mode?,voice?,resource_id?,local_voice?,endpoint?,timeout_seconds?}`；provider 为 doubao/local/say/external，默认 doubao。`local_voice` 是本地注册音色 ID（默认 default），与豆包的 `voice` 分开；`endpoint` 默认 `http://127.0.0.1:3931/v1/audio/speech`，只接受 loopback HTTP 固定路径；本地请求 `timeout_seconds` 默认 600，允许 30–3600。新项目与示例默认 `segment_mode: "phrases"`，逐短句合成和测长；旧 job 省略此字段仍走场景音频兼容路径。
 - `sources: [{id,title,url,supports?}]`；本地资料可用 `local:` 引用并在运行项目保留副本。
 - `scenes: [{id,title,narration,caption,source_ids,hold_seconds?,hint?,presentation?}]`。id 唯一小写安全标识，不作为任意路径使用。`narration` 是讲稿，`caption` 是知识栏要点，二者不必重复。`hold_seconds` 为 0–30 秒，长稿应按概念拆场景。
 - `presentation: {captions?,reduced_motion?,zoom?,focus?}`：新项目默认 `captions: {mode:"phrase",style:"cinema",placement:"bottom"}`。`mode` 可选 phrase/scene；`style` 可选 cinema/kinetic，省略仍为 cinema。`placement` 可选 auto/bottom/left/right/top，但只控制显式 kinetic 风格；cinema 始终全画幅底部居中。`keep_together` 可选，由最多 64 个非空短语组成，保护术语不被拆行；每项不超过 100 字符且不能含控制字符。`zoom` 为 1–1.12，`focus` 为两个 0–1 数值组成的 `[x,y]`。
@@ -53,7 +53,7 @@ export function mount(container, {kit, job}) {
 
 ## TTS 输出与变化检测
 
-`phrases` 模式先按标点分出语义短句，再由 doubao/say 逐句真实合成、检查源音频正长度并归一化。中文尽量 12–26 字、上限 32，英文保持单词完整；不能用字数估算音长。每句 WAV 通过 ffprobe 测长，拼为 `audio/<id>.wav` 后再追加 `hold_seconds` 的真实静音，最后拼接 `narration-full.wav`。临时短句音频和文本不发布。
+`phrases` 模式先按标点分出语义短句，再由 doubao/local/say 逐句真实合成、检查源音频正长度并归一化。中文尽量 12–26 字、上限 32，英文保持单词完整；不能用字数估算音长。每句 WAV 通过 ffprobe 测长，拼为 `audio/<id>.wav` 后再追加 `hold_seconds` 的真实静音，最后拼接 `narration-full.wav`。临时短句音频和文本不发布。仅切换 `tts.provider` 到 local 时保留豆包的音色字段；配置改变仍会改变 `job_fingerprint`，必须重新成功合成才可构建。
 
 `timing.json` 保持原场景合约：`{schema_version:1,provider,language,alignment:'scene',duration,job_fingerprint,scenes:[{id,start,end,duration,audio}]}`。`audio` 为相对路径，场景连续；顶层 `alignment` 仍为 scene，不代表新增的字幕也是场景级。`phrases` 模式另加：
 

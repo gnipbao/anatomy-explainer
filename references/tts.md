@@ -39,6 +39,26 @@ python3 scripts/tts.py --project /path/to/project --force
 
 核对日期：2026-10-15。接口依据：[火山引擎单向流式合成 HTTP](https://docs.volcengine.com/docs/DoubaoVoice/unidirectional-streaming-text-to-speech-http?lang=zh)、[HTTP Chunked V3](https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh)、[旧版鉴权](https://docs.volcengine.com/docs/DoubaoVoice/old-version-console-authentication-reference-example?lang=zh)。没有真实云端合成证据时，不能声称云端音色或账户已验证。
 
+## 独立本地引擎：local
+
+VoxCPM2 本地服务的安装、模型下载、音色配置与独立 CLI 见 [本地配音引擎](local-voice-engine.md)。当前后端需要 Apple Silicon Mac、专用 Python 3.12 / MLX 环境和手动下载的 `mlx-community/VoxCPM2-8bit`；这些依赖不装入基础视频环境，主权重不随包分发或自动下载。
+
+服务就绪后，只把 `tts.provider` 改为 `"local"`。保留原 `tts.voice` / `tts.resource_id` 方便切回豆包；本地使用另一个字段 `tts.local_voice`（默认 `"default"`），对应本机服务注册的音色 ID。可选配置：
+
+```json
+{
+  "provider": "local",
+  "segment_mode": "phrases",
+  "local_voice": "default",
+  "endpoint": "http://127.0.0.1:3931/v1/audio/speech",
+  "timeout_seconds": 1800
+}
+```
+
+`endpoint` 省略时使用上述地址，仅接受 loopback HTTP 的固定路径；请求不走代理、不跟随重定向。`timeout_seconds` 省略时为 600，允许 30–3600 秒。适配器提交 `model: "voxcpm2"`、场景或短句原文、音色 ID、`response_format: "wav"` 和目标语言，核对响应长度及实际 PCM WAV 后才归一化、测长和提交整套产物。连接失败、503 缺模型、409 正忙、超时、静音或坏音频均明确失败，不自动重试或转用豆包；失败时保留上一套完整输出。
+
+`phrases` 与 `scene` 使用原有时间线合约，`phrases` 仍逐短句合成并实测，因而可直接替换原服务。每次请求启动隔离 worker 并重新加载模型；短句之间的韵律和速度需要试听，不因换模型就宣称改善。`scene` 只测出场景边界；独立整篇 CLI 没有转写与字幕对齐，只能标记 `alignment_pending`，不能按字数生成假精确 cues。`language` 是标签且不负责翻译，当前 MLX worker 不将它映射成未实现的强制语言控制；多语言发音须以实际讲稿试听验证。
+
 ## 本地多语言基础：macOS say
 
 设置 `"tts": {"provider": "say", "segment_mode": "phrases"}`。脚本从系统已安装音色中选择与 `language` 匹配的音色，可用 `tts.voice` 精确指定安装名称。先运行 `say -v '?'` 查看可用音色。系统未安装对应语言音色则报错；不静默退回其他语言。此适配层提供基础本地合成，音色质量和可用语种由本机决定。
@@ -53,7 +73,7 @@ macOS 的受限沙箱可能让 `say` 返回退出码 0、却生成 0 帧 AIFF。
 
 ## 按真实音频对齐短句
 
-`tts.segment_mode: "phrases"` 适用于 `doubao` 和 `say`。先按标点分出语义短句，中文在同一句内尽量合并为 12–26 字、最多 32 字；短的完整句子可以独立成段。英文按空格和标点切分，保持单词完整。超长单词可超过字符上限。分段只决定合成文本，绝不决定时间长度。
+`tts.segment_mode: "phrases"` 适用于 `doubao`、`local` 和 `say`。先按标点分出语义短句，中文在同一句内尽量合并为 12–26 字、最多 32 字；短的完整句子可以独立成段。英文按空格和标点切分，保持单词完整。超长单词可超过字符上限。分段只决定合成文本，绝不决定时间长度。
 
 每个短句实际合成后，先检查源音频正时长，再转换 WAV 并由 `ffprobe` 实测。按这些短句音频的真实长度顺序拼成场景，随后追加 `hold_seconds` 对应的真实静音，最后拼接所有场景。原始短句 cue 保留该短句实测音频的开始和结束秒数；影院字幕另按视频帧派生显示边界，并在相邻条目间保留 2 帧间隔，场景末尾停顿没有残留字幕。分开合成可能改变连续讲述的语调和停连，正式使用前应试听。
 
@@ -81,4 +101,4 @@ python3 -m unittest discover -s tests -p 'test_tts.py' -v
 python3 -m unittest discover -s tests -p 'test_segments.py' -v
 ```
 
-测试包括流完成/业务失败/缺音频、危险 ID 和语言检查、dry-run 不执行、分句标点和英文单词边界、真实 ffmpeg 时长与末尾静音、覆盖保护、失败清理，以及用明确标注的测试波形验证逐短句时轴。测试不请求豆包，也不把测试波形冒充真实配音或云端成功。
+测试包括流完成/业务失败/缺音频、危险 ID 和语言检查、dry-run 不执行、分句标点和英文单词边界、真实 ffmpeg 时长与末尾静音、覆盖保护、失败清理，以及用明确标注的测试波形验证逐短句时轴。本地适配器另覆盖 loopback 限制、保留豆包音色、缺模型和不完整音频；独立服务、环境准备与 worker 检查见对应 `test_voice_engine.py`、`test_voice_setup.py`、`test_local_voice_worker.py`。测试不请求豆包或下载模型，不把测试波形和模拟模型冒充真实配音成功。
