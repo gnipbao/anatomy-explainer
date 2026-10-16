@@ -31,7 +31,7 @@
 
 ## 配音扩展
 
-provider 协议目前落地 doubao、local、say、external。新项目默认豆包及 `tts.segment_mode: "phrases"`，doubao / local / say 逐短句合成并实测后写入 `captions.alignment: "measured-phrases"`；中文目标为每句 12–26 字、最多 32 字，完整短句可独立成 cue，英文不截断单词。改配色不改变这些音频边界。
+provider 协议目前落地 doubao、local、say、external。新项目优先本机配音偏好，未配置时使用豆包及 `tts.segment_mode: "phrases"`，doubao / local / say 逐短句合成并实测后写入 `captions.alignment: "measured-phrases"`；中文目标为每句 12–26 字、最多 32 字，完整短句可独立成 cue，英文不截断单词。改配色不改变这些音频边界。
 
 `local` 连接独立的 loopback HTTP 配音引擎，只改 provider 即可保留豆包配置；本地音色另用 `local_voice`。当前真实实现的模型后端仅为 Apple Silicon 上的 `voxcpm2_mlx`，环境、模型、参考音色与程序都在 Skill 外，见 [本地配音引擎](local-voice-engine.md)。新增模型需在 `voice_engine.py` 的显式 `BACKENDS` 中实现并审阅 `doctor` / `generate`，不能只在 JSON 登记名称，也不执行任意插件脚本。后端输出必须是真实 WAV；服务没有自动转写、强制对齐或静默降级。
 
